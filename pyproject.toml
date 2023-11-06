@@ -5,6 +5,13 @@ description = "A git powered package manager built on top of submodules."
 authors = ["Christopher Kaster <me@atomicptr.de>"]
 license = "GPLv3"
 readme = "README.md"
+homepage = "https://github.com/atomicptr/git-pkg"
+repository = "https://github.com/atomicptr/git-pkg"
+keywords = ["packaging", "dependency"]
+classifiers = [
+    "Topic :: Software Development",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)"
+]
 
 [tool.poetry.scripts]
 git-pkg = "gitpkg.main:main"
@@ -17,8 +24,8 @@ rich = "^13.6.0"
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.1.4"
-coverage = "^7.3.2"
 pytest = "^7.4.3"
+pytest-cov = "^4.1.0"
 
 [build-system]
 requires = ["poetry-core"]

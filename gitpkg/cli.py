@@ -81,7 +81,7 @@ Commands:
 
         return commands_list
 
-    def command_destinations_list(self):
+    def command_dest_list(self):
         """List registered destinations"""
 
         if len(self._pm.destinations()) == 0:
@@ -97,7 +97,7 @@ Commands:
             console.print(f"\t- Name: '{dest.name}'")
             console.print(f"\t  Path: '{Path(dest.path).absolute()}'")
 
-    def command_destinations_register(self):
+    def command_dest_register(self):
         """Register a new destination"""
 
         parser = argparse.ArgumentParser(

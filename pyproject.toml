@@ -1,0 +1,71 @@
+[tool.poetry]
+name = "git-pkg"
+version = "0.1.0"
+description = "A git powered package manager built on top of submodules."
+authors = ["Christopher Kaster <me@atomicptr.de>"]
+license = "GPLv3"
+readme = "README.md"
+
+[tool.poetry.scripts]
+git-pkg = "gitpkg.main:main"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+gitpython = "^3.1.40"
+dataclass-binder = "^0.3.4"
+rich = "^13.6.0"
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.1.4"
+coverage = "^7.3.2"
+pytest = "^7.4.3"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+select = [
+    "ARG",
+    "B",
+    "BLE",
+    "C4",
+    "COM",
+    "DTZ",
+    "E",
+    "EM",
+    "ERA",
+    "F",
+    "G",
+    "I",
+    "ICN",
+    "INP",
+    "ISC",
+    "N",
+    "PIE",
+    "PLC",
+    "PLE",
+    "PLW",
+    "PTH",
+    "PYI",
+    "Q",
+    "Q",
+    "RET",
+    "RSE",
+    "RUF",
+    "S",
+    "SIM",
+    "SLF",
+    "T20",
+    "TCH",
+    "TID",
+    "UP",
+    "W",
+    "YTT",
+]
+ignore = ["G004", "S311"]
+
+[tool.ruff.flake8-quotes]
+docstring-quotes = "double"
+inline-quotes = "double"
+multiline-quotes = "double"

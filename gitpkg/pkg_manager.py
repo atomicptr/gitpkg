@@ -78,15 +78,17 @@ class PkgManager:
         self._write_config()
 
     def is_package_installed(
-            self,
-            destination: Destination,
-            pkg: PkgConfig,
+        self,
+        destination: Destination,
+        pkg: PkgConfig,
     ) -> bool:
         if not self.has_package_been_added(destination, pkg):
             return False
 
-        return self.package_install_location(destination, pkg).exists() and\
-            self.package_vendor_location(destination, pkg).exists()
+        return (
+            self.package_install_location(destination, pkg).exists()
+            and self.package_vendor_location(destination, pkg).exists()
+        )
 
     def install_package(self, destination: Destination, pkg: PkgConfig) -> None:
         if not self.has_package_been_added(destination, pkg):
@@ -133,16 +135,16 @@ class PkgManager:
         return self.project_root_directory() / _VENDOR_DIR
 
     def package_install_location(
-            self,
-            destination: Destination,
-            pkg: PkgConfig,
+        self,
+        destination: Destination,
+        pkg: PkgConfig,
     ) -> Path:
         return self.project_root_directory() / destination.path / pkg.name
 
     def package_vendor_location(
-            self,
-            destination: Destination,
-            pkg: PkgConfig,
+        self,
+        destination: Destination,
+        pkg: PkgConfig,
     ) -> Path:
         return self.vendor_directory() / self._package_ident(destination, pkg)
 
@@ -155,8 +157,12 @@ class PkgManager:
         return res[0:32]
 
     def _internal_dir(self, destination: Destination, pkg: PkgConfig) -> Path:
-        return (self.project_root_directory() / ".git" / "modules" /
-                self._package_ident(destination, pkg))
+        return (
+            self.project_root_directory()
+            / ".git"
+            / "modules"
+            / self._package_ident(destination, pkg)
+        )
 
     @staticmethod
     def from_environment():

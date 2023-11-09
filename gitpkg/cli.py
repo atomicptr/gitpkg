@@ -186,8 +186,7 @@ Commands:
         parser.add_argument(
             "-b",
             "--branch",
-            help="Define the branch to be used, defaults to the repository "
-                 "default",
+            help="Define the branch to be used, defaults to the repository default",
             type=str,
         )
 

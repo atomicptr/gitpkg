@@ -70,7 +70,11 @@ select = [
     "W",
     "YTT",
 ]
-ignore = ["G004", "S311", "TCH003"]
+ignore = [
+    "G004", "S311", "TCH003",
+    # disabled for ruff format
+    "ISC001", "COM812",
+]
 
 [tool.ruff.flake8-quotes]
 docstring-quotes = "double"

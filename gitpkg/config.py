@@ -7,13 +7,13 @@ from dataclass_binder import Binder
 
 
 @dataclass
-class PkgManager:
+class PkgConfig:
     name: str
     url: str
     package_root: str
-    updates_enabled: bool | None = None
-    branch: str | None = None
-    install_mode: str | None = None
+    updates_disabled: bool = False
+    branch: str = None
+    install_method: str = None
 
 
 @dataclass
@@ -24,7 +24,7 @@ class Destination:
 
 @dataclass
 class Config:
-    packages: dict[str, PkgManager] = field(default_factory=dict)
+    packages: dict[str, list[PkgConfig]] = field(default_factory=dict)
     destinations: list[Destination] = field(default_factory=list)
 
     @staticmethod
@@ -32,6 +32,4 @@ class Config:
         return Binder(Config).parse_toml(path)
 
     def to_toml_string(self) -> str:
-        return "\n".join(
-            line for line in Binder(self).format_toml()
-        )
+        return "\n".join(line for line in Binder(self).format_toml())

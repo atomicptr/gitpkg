@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from gitpkg.config import Destination, PkgConfig
+
 
 class GitPkgError(Exception):
     raw_message: str = None
@@ -9,13 +11,36 @@ class GitPkgError(Exception):
         super().__init__(f"ERROR: git pkg: {message}")
 
 
-class DestinationWithNameAlreadyExists(GitPkgError):
+class DestinationWithNameAlreadyExistsError(GitPkgError):
     def __init__(self, name: str):
         super().__init__(f"destination with name '{name}' already exists.")
 
 
-class DestinationWithPathAlreadyExists(GitPkgError):
+class DestinationWithPathAlreadyExistsError(GitPkgError):
     def __init__(self, path: Path):
         super().__init__(
             f"destination with path '{path.absolute()}' already exists.",
+        )
+
+
+class CouldNotFindDestinationError(GitPkgError):
+    def __init__(self, name: str):
+        super().__init__(
+            f"destination '{name}' could not be found.",
+        )
+
+
+class PkgHasAlreadyBeenAddedError(GitPkgError):
+    def __init__(self, destination: Destination, pkg: PkgConfig):
+        super().__init__(
+            f"package '{pkg.name}' has already been added to "
+            f"destination '{destination.name}'.",
+        )
+
+
+class PackageAlreadyInstalledError(GitPkgError):
+    def __init__(self, destination: Destination, pkg: PkgConfig):
+        super().__init__(
+            f"package '{pkg.name}' has already been installed to "
+            f"destination '{destination.name}'.",
         )

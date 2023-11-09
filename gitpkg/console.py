@@ -1,6 +1,10 @@
+import shutil
+
 from rich.console import Console
 
-console = Console()
+console = Console(
+    width=shutil.get_terminal_size().columns,
+)
 
 
 def fatal(*args, **kwargs) -> None:

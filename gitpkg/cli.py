@@ -100,6 +100,7 @@ Commands:
             title="Destinations",
             show_header=True,
             header_style="bold magenta",
+            box=None,
         )
 
         table.add_column("Name")
@@ -254,3 +255,50 @@ Commands:
             success(
                 f"Successfully installed package '{pkg.name}' at '{location}'",
             )
+
+    def command_list(self):
+        """List installed packages"""
+
+        if len(self._pm.destinations()) == 0:
+            console.print(
+                "No destinations registered yet, please do so via "
+                "destinations:register",
+            )
+            return
+
+        table = Table(
+            title="Packages",
+            show_header=True,
+            header_style="bold magenta",
+            box=None,
+        )
+
+        table.add_column("Name")
+        table.add_column("Install Dir")
+        table.add_column("Hash")
+        table.add_column("Last Update")
+
+        found_one = False
+
+        for dest in self._pm.destinations():
+            for pkg in self._pm.packages_by_destination(dest):
+                found_one = True
+
+                install_dir = self._pm.package_install_location(dest, pkg).relative_to(
+                    self._pm.project_root_directory()
+                )
+
+                stats = self._pm.package_stats(dest, pkg)
+
+                table.add_row(
+                    pkg.name,
+                    str(install_dir),
+                    stats.get("commit")[0:7] if "commit" in stats else None,
+                    stats.get("date").isoformat() if "date" in stats else None,
+                )
+
+        if not found_one:
+            console.print("No packages have been installed yet, add one via 'add URL'")
+            return
+
+        console.print(table)

@@ -65,6 +65,19 @@ class PkgManager:
     def has_package_been_added(self, destination: Destination, pkg: PkgConfig):
         return self.find_package(destination, pkg.name) is not None
 
+    def package_stats(self, destination: Destination, pkg: PkgConfig) -> dict | None:
+        vendor_dir = self.package_vendor_location(destination, pkg)
+
+        if not vendor_dir.exists():
+            return None
+
+        pkg_repo = Repo(vendor_dir)
+
+        return {
+            "commit": pkg_repo.head.commit.hexsha,
+            "date": pkg_repo.head.commit.committed_datetime,
+        }
+
     def add_package(self, destination: Destination, pkg: PkgConfig) -> None:
         if self.has_package_been_added(destination, pkg):
             raise PkgHasAlreadyBeenAddedError(destination, pkg)
@@ -176,6 +189,31 @@ class PkgManager:
         install_dir.symlink_to(package_root_dir)
 
         logging.debug(f"installed package '{pkg.name}' to {install_dir}")
+
+    def uninstall_package(self, destination: Destination, pkg: PkgConfig) -> None:
+        # TODO: readd this later to remove git submodules
+        #   file proper _pkg_ident = self._package_ident(destination, pkg)
+
+        internal_dir = self._internal_dir(destination, pkg)
+        if internal_dir.exists():
+            shutil.rmtree(internal_dir)
+
+        install_dir = self.package_install_location(destination, pkg)
+        if install_dir.exists():
+            install_dir.unlink()
+
+        vendor_dir = self.package_vendor_location(destination, pkg)
+        if vendor_dir.exists():
+            shutil.rmtree(vendor_dir)
+
+        # TODO: remove from .gitsubmodules
+
+        if self.has_package_been_added(destination, pkg):
+            self.remove_package(destination, pkg)
+
+        logging.debug(
+            f"uninstalled package '{pkg.name}' from dest: " f"'{destination.name}'"
+        )
 
     def _write_config(self) -> None:
         logging.debug(f"Written to config file: {self.config_file()}")

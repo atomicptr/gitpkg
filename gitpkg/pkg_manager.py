@@ -3,7 +3,7 @@ import shutil
 from hashlib import sha3_256
 from pathlib import Path
 
-from git import Repo
+from git import GitConfigParser, Repo
 
 from gitpkg.config import Config, Destination, PkgConfig
 from gitpkg.errors import (
@@ -191,8 +191,7 @@ class PkgManager:
         logging.debug(f"installed package '{pkg.name}' to {install_dir}")
 
     def uninstall_package(self, destination: Destination, pkg: PkgConfig) -> None:
-        # TODO: readd this later to remove git submodules
-        #   file proper _pkg_ident = self._package_ident(destination, pkg)
+        pkg_ident = self._package_ident(destination, pkg)
 
         internal_dir = self._internal_dir(destination, pkg)
         if internal_dir.exists():
@@ -206,7 +205,18 @@ class PkgManager:
         if vendor_dir.exists():
             shutil.rmtree(vendor_dir)
 
-        # TODO: remove from .gitsubmodules
+        submodules_file = self.project_root_directory() / ".gitmodules"
+
+        if submodules_file.exists():
+            with GitConfigParser(submodules_file, read_only=False) as cp:
+                cp.read()
+                cp.remove_section(f'submodule "{pkg_ident}"')
+                cp.write()
+
+            # remove .gitmodules file if empy
+            text = submodules_file.read_text()
+            if len(text.strip()) == 0:
+                submodules_file.unlink()
 
         if self.has_package_been_added(destination, pkg):
             self.remove_package(destination, pkg)

@@ -302,3 +302,63 @@ Commands:
             return
 
         console.print(table)
+
+    def command_remove(self):
+        """Add and install a new repository to a destination"""
+
+        parser = argparse.ArgumentParser(
+            description=inspect.stack()[0][3].__doc__,
+        )
+
+        parser.add_argument(
+            "package",
+            help="Name of the repository",
+            type=str,
+        )
+
+        parser.add_argument(
+            "--dest-name",
+            help="Name of the destination",
+            type=str,
+        )
+
+        args = parser.parse_args(sys.argv[2:])
+        logging.debug(args)
+
+        dest = self._pm.destination_by_name(args.package)
+
+        if len(self._pm.destinations()) == 0:
+            console.print(
+                "No destinations registered yet, please do so via "
+                "destinations:register",
+            )
+            return
+
+        if not dest and not args.dest_name and len(self._pm.destinations()) == 1:
+            dest = self._pm.destinations()[0]
+
+        # multiple destinations exist so we look for one which contains the pkg
+        if not dest and len(self._pm.destinations()) > 1:
+            for destination in self._pm.destinations():
+                pkg = self._pm.find_package(destination, args.package)
+
+                if pkg is None:
+                    continue
+
+                dest = destination
+                break
+
+        if not dest:
+            fatal(f"Could not find package '{args.package}' in any dest.")
+
+        pkg = self._pm.find_package(dest, args.package)
+
+        if not pkg:
+            fatal(f"Could not find package '{args.package}' in any dest.")
+
+        with console.status(f"[bold green]Uninstalling '{pkg.name}'..."):
+            self._pm.uninstall_package(dest, pkg)
+            location = self._pm.package_install_location(dest, pkg)
+            success(
+                f"Successfully uninstalled package '{pkg.name}' at '{location}'",
+            )

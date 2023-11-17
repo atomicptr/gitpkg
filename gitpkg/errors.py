@@ -44,3 +44,27 @@ class PackageAlreadyInstalledError(GitPkgError):
             f"package '{pkg.name}' has already been installed to "
             f"destination '{destination.name}'.",
         )
+
+
+class UnknownPackageError(GitPkgError):
+    def __init__(self, destination: Destination, pkg: PkgConfig):
+        super().__init__(
+            f"package '{pkg.name}' is unknown (dest: '{destination.name}')",
+        )
+
+
+class PackageUrlChangedError(GitPkgError):
+    def __init__(self, destination: Destination, ref_pkg: PkgConfig, pkg: PkgConfig):
+        super().__init__(
+            f"package '{pkg.name}' (dest: '{destination.name}') changed url "
+            f"from '{ref_pkg.url}' to '{pkg.url}', please uninstall the "
+            f"package first.",
+        )
+
+
+class PackageRootDirNotFoundError(GitPkgError):
+    def __init__(self, pkg: PkgConfig, pkg_root_dir: Path):
+        super().__init__(
+            f"package '{pkg.name}' has unknown package root set to "
+            f"'{pkg.package_root}' which is '{pkg_root_dir.absolute()}')",
+        )

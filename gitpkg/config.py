@@ -32,4 +32,4 @@ class Config:
         return Binder(Config).parse_toml(path)
 
     def to_toml_string(self) -> str:
-        return "\n".join(line for line in Binder(self).format_toml_template())
+        return "\n".join(line for line in Binder(self).format_toml())

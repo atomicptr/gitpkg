@@ -10,7 +10,10 @@ from gitpkg.errors import (
     DestinationWithNameAlreadyExistsError,
     DestinationWithPathAlreadyExistsError,
     PackageAlreadyInstalledError,
+    PackageRootDirNotFoundError,
+    PackageUrlChangedError,
     PkgHasAlreadyBeenAddedError,
+    UnknownPackageError,
 )
 
 _VENDOR_DIR = ".gitpkgs"
@@ -60,10 +63,7 @@ class PkgManager:
         return dest
 
     def has_package_been_added(self, destination: Destination, pkg: PkgConfig):
-        for my_pkg in self.packages_by_destination(destination):
-            if my_pkg.name == pkg.name:
-                return True
-        return False
+        return self.find_package(destination, pkg.name) is not None
 
     def add_package(self, destination: Destination, pkg: PkgConfig) -> None:
         if self.has_package_been_added(destination, pkg):
@@ -75,6 +75,25 @@ class PkgManager:
             self._config.packages[destination.name] = []
 
         self._config.packages[destination.name].append(pkg)
+        self._write_config()
+
+    def remove_package(self, destination: Destination, pkg: PkgConfig) -> None:
+        if not self.has_package_been_added(destination, pkg):
+            raise UnknownPackageError(destination, pkg)
+
+        logging.debug(f"removing package {pkg} from dest: {destination}")
+
+        index = -1
+
+        for idx, p in enumerate(self._config.packages[destination.name]):
+            if pkg.name == p.name:
+                index = idx
+                break
+
+        if index == -1:
+            raise UnknownPackageError(destination, pkg)
+
+        del self._config.packages[destination.name][index]
         self._write_config()
 
     def is_package_installed(
@@ -90,11 +109,42 @@ class PkgManager:
             and self.package_vendor_location(destination, pkg).exists()
         )
 
+    def find_package(self, destination: Destination, pkg_name: str) -> PkgConfig | None:
+        if destination.name not in self._config.packages:
+            return None
+        for pkg in self._config.packages[destination.name]:
+            if pkg.name == pkg_name:
+                return pkg
+        return None
+
+    def has_pkg_been_changed(self, destination: Destination, pkg: PkgConfig) -> bool:
+        ref_pkg = self.find_package(destination, pkg.name)
+
+        if ref_pkg is None:
+            raise UnknownPackageError(destination, pkg)
+
+        if ref_pkg.url != pkg.url:
+            raise PackageUrlChangedError(destination, ref_pkg, pkg)
+
+        return (
+            ref_pkg.package_root != pkg.package_root
+            or ref_pkg.updates_disabled != pkg.updates_disabled
+            or ref_pkg.branch != pkg.branch
+            or ref_pkg.install_method != pkg.install_method
+        )
+
     def install_package(self, destination: Destination, pkg: PkgConfig) -> None:
         if not self.has_package_been_added(destination, pkg):
             self.add_package(destination, pkg)
 
-        if self.is_package_installed(destination, pkg):
+        has_pkg_changed = self.has_pkg_been_changed(destination, pkg)
+
+        if has_pkg_changed:
+            logging.debug(f"replace package with new settings {pkg}")
+            self.remove_package(destination, pkg)
+            self.add_package(destination, pkg)
+
+        if not has_pkg_changed and self.is_package_installed(destination, pkg):
             raise PackageAlreadyInstalledError(destination, pkg)
 
         internal_dir = self._internal_dir(destination, pkg)
@@ -103,21 +153,27 @@ class PkgManager:
 
         vendor_dir = self.package_vendor_location(destination, pkg)
         install_dir = self.package_install_location(destination, pkg)
+        package_root_dir = vendor_dir / pkg.package_root
 
+        # create parent directories
         vendor_dir.parent.mkdir(parents=True, exist_ok=True)
         install_dir.parent.mkdir(parents=True, exist_ok=True)
 
+        if not vendor_dir.exists():
+            self._repo.create_submodule(
+                name=self._package_ident(destination, pkg),
+                path=vendor_dir,
+                url=pkg.url,
+                branch=pkg.branch,
+            )
+
+        if not package_root_dir.exists():
+            raise PackageRootDirNotFoundError(pkg, package_root_dir)
+
         if install_dir.exists():
-            shutil.rmtree(install_dir)
+            install_dir.unlink()
 
-        self._repo.create_submodule(
-            name=self._package_ident(destination, pkg),
-            path=vendor_dir,
-            url=pkg.url,
-            branch=pkg.branch,
-        )
-
-        install_dir.symlink_to(vendor_dir)
+        install_dir.symlink_to(package_root_dir)
 
         logging.debug(f"installed package '{pkg.name}' to {install_dir}")
 
@@ -171,7 +227,7 @@ class PkgManager:
 
         config_file = PkgManager._project_root_directory(repo) / _CONFIG_FILE
 
-        if PkgManager._project_root_directory(repo).exists():
+        if config_file.exists():
             config = Config.from_path(config_file)
 
         return PkgManager(repo, config)

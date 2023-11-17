@@ -1,12 +1,12 @@
 [tool.poetry]
-name = "git-pkg"
+name = "gitpkg"
 version = "0.1.0"
 description = "A git powered package manager built on top of submodules."
 authors = ["Christopher Kaster <me@atomicptr.de>"]
 license = "GPLv3"
 readme = "README.md"
-homepage = "https://github.com/atomicptr/git-pkg"
-repository = "https://github.com/atomicptr/git-pkg"
+homepage = "https://github.com/atomicptr/gitpkg"
+repository = "https://github.com/atomicptr/gitpkg"
 keywords = ["packaging", "dependency"]
 classifiers = [
     "Topic :: Software Development",
@@ -20,10 +20,10 @@ git-pkg = "gitpkg.main:main"
 python = "^3.11"
 gitpython = "^3.1.40"
 dataclass-binder = "^0.3.4"
-rich = "^13.6.0"
+rich = "^13.7.0"
 
 [tool.poetry.group.dev.dependencies]
-ruff = "^0.1.4"
+ruff = "^0.1.5"
 pytest = "^7.4.3"
 pytest-cov = "^4.1.0"
 

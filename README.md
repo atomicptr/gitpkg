@@ -1,4 +1,4 @@
-# git-pkg
+# gitpkg
 
 A git powered package manager built on top of submodules.
 
@@ -7,7 +7,7 @@ A git powered package manager built on top of submodules.
 The recommended way to install git-pkg is via [pipx](https://pypa.github.io/pipx/):
 
 ```bash
-$ pipx install git-pkg
+$ pipx install gitpkg
 ```
 
 ## License

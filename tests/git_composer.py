@@ -1,28 +1,29 @@
 from __future__ import annotations
 
 import random
+import shutil
 import tempfile
 from hashlib import sha3_256
 from pathlib import Path
+from typing import ClassVar
 
 from git import Repo
 
 
 class GitComposer:
-    temp_dir: tempfile.TemporaryDirectory
+    temp_dir: Path
 
-    def path(self) -> Path:
-        return Path(self.temp_dir.name)
+    to_be_deleted: ClassVar[list[Path]] = []
 
     def setup(self):
-        self.temp_dir = tempfile.TemporaryDirectory(prefix="gitpkg_tests")
-        self.path().mkdir(parents=True, exist_ok=True)
+        self.temp_dir = Path(tempfile.mkdtemp(prefix="gitpkg_tests"))
+        self.temp_dir.mkdir(parents=True, exist_ok=True)
 
     def teardown(self):
-        self.temp_dir.cleanup()
+        GitComposer.to_be_deleted.append(self.temp_dir)
 
     def create_repository(self, name: str) -> GitComposerRepo:
-        repo_path = self.path() / name
+        repo_path = self.temp_dir / name
         repo = GitComposerRepo(Repo.init(repo_path), repo_path)
 
         repo.commit_new_file("test.txt")
@@ -31,6 +32,11 @@ class GitComposer:
         repo.change_file("test2.txt")
 
         return repo
+
+    @staticmethod
+    def cleanup():
+        for directory in GitComposer.to_be_deleted:
+            shutil.rmtree(directory)
 
 
 class GitComposerRepo:
@@ -41,8 +47,8 @@ class GitComposerRepo:
         self._repo = repo
         self._path = path
 
-    def abs(self) -> Path:
-        return self._path.absolute()
+    def path(self) -> Path:
+        return self._path
 
     def commit_new_file(self, filename: str, message: str = None):
         filepath = self._path / filename
@@ -62,17 +68,15 @@ class GitComposerRepo:
 
         lines = filepath.read_text().splitlines()
 
-        index = random.randint(0, len(lines))
+        index = random.randint(0, len(lines) - 1)
         lines[index] = _random_str()
         filepath.write_text("\n".join(lines))
 
-        self._repo.index.add(filename)
+        self._repo.index.add([str(filepath)])
         self._repo.index.commit(f"update {filename}")
 
 
 def _random_str() -> str:
     hasher = sha3_256()
-    hasher.update(
-        str(random.randint(0, 1000000)).encode("utf-8")
-    )
+    hasher.update(str(random.randint(0, 1000000)).encode("utf-8"))
     return hasher.hexdigest()

@@ -3,4 +3,4 @@ set -e
 cd "$(dirname $0)/.."
 
 ruff check gitpkg --fix
-ruff format gitpkg
+ruff format gitpkg tests

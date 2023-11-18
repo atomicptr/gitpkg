@@ -1,5 +1,9 @@
+from __future__ import annotations
+
 import logging
 import shutil
+from dataclasses import dataclass
+from datetime import datetime
 from hashlib import sha3_256
 from pathlib import Path
 
@@ -65,7 +69,9 @@ class PkgManager:
     def has_package_been_added(self, destination: Destination, pkg: PkgConfig):
         return self.find_package(destination, pkg.name) is not None
 
-    def package_stats(self, destination: Destination, pkg: PkgConfig) -> dict | None:
+    def package_stats(
+        self, destination: Destination, pkg: PkgConfig
+    ) -> PackageStats | None:
         vendor_dir = self.package_vendor_location(destination, pkg)
 
         if not vendor_dir.exists():
@@ -73,10 +79,10 @@ class PkgManager:
 
         pkg_repo = Repo(vendor_dir)
 
-        return {
-            "commit": pkg_repo.head.commit.hexsha,
-            "date": pkg_repo.head.commit.committed_datetime,
-        }
+        return PackageStats(
+            pkg_repo.head.commit.hexsha,
+            pkg_repo.head.commit.committed_datetime,
+        )
 
     def add_package(self, destination: Destination, pkg: PkgConfig) -> None:
         if self.has_package_been_added(destination, pkg):
@@ -283,3 +289,9 @@ class PkgManager:
     @staticmethod
     def _project_root_directory(repo: Repo) -> Path:
         return Path(repo.git_dir).parent
+
+
+@dataclass
+class PackageStats:
+    commit_hash: str
+    commit_date: datetime

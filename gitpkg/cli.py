@@ -8,6 +8,7 @@ from pathlib import Path
 from git import InvalidGitRepositoryError
 from rich.logging import RichHandler
 from rich.table import Table
+from rich.tree import Tree
 
 from gitpkg.config import PkgConfig
 from gitpkg.console import console, fatal, success
@@ -293,8 +294,8 @@ Commands:
                 table.add_row(
                     pkg.name,
                     str(install_dir),
-                    stats.get("commit")[0:7] if "commit" in stats else None,
-                    stats.get("date").isoformat() if "date" in stats else None,
+                    stats.commit_hash[0:7],
+                    stats.commit_date.isoformat(),
                 )
 
         if not found_one:
@@ -362,3 +363,25 @@ Commands:
             success(
                 f"Successfully uninstalled package '{pkg.name}' at '{location}'",
             )
+
+    def command_install(self):
+        tree = Tree("Installed packages:")
+
+        with console.status("[bold green]Installing packages..."):
+            for dest in self._pm.destinations():
+                for pkg in self._pm.packages_by_destination(dest):
+                    has_pkg_changed = self._pm.has_pkg_been_changed(dest, pkg)
+                    already_installed = self._pm.is_package_installed(dest, pkg)
+
+                    if already_installed and not has_pkg_changed:
+                        tree.add(
+                            f"[bold]{pkg.name}[/bold] is already installed.",
+                            style="dim",
+                            guide_style="dim",
+                        )
+                        continue
+
+                    self._pm.install_package(dest, pkg)
+
+                    tree.add(f"[bold]{pkg.name}[/bold] was installed")
+            console.print(tree)

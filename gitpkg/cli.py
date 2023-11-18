@@ -10,7 +10,7 @@ from rich.logging import RichHandler
 from rich.table import Table
 from rich.tree import Tree
 
-from gitpkg.config import PkgConfig
+from gitpkg.config import Destination, PkgConfig
 from gitpkg.console import console, fatal, success
 from gitpkg.errors import CouldNotFindDestinationError, GitPkgError
 from gitpkg.pkg_manager import PkgManager
@@ -86,6 +86,30 @@ Commands:
             commands_list += f"\t{command.ljust(max_len)}\t{desc}\n"
 
         return commands_list
+
+    def _package_name(
+        self,
+        dest: Destination,
+        pkg: PkgConfig,
+        hide_dest: bool = False,
+        hide_stats: bool = False,
+    ) -> str:
+        prefix = ""
+        pkg_name = f"[bold]{pkg.name}[/bold]"
+        suffix = ""
+
+        if not hide_stats and self._pm.is_package_installed(dest, pkg):
+            stats = self._pm.package_stats(dest, pkg)
+            suffix = f" ({stats.commit_hash[0:7]})"
+
+        if not hide_dest and len(self._pm.destinations()) > 1:
+            count = 0
+            for d in self._pm.destinations():
+                if self._pm.has_package_been_added(d, pkg):
+                    count += 1
+            if count > 1:
+                prefix = f"{dest.name}/"
+        return prefix + pkg_name + suffix
 
     def command_dest_list(self):
         """List registered destinations"""
@@ -250,11 +274,16 @@ Commands:
         if not self._pm.has_package_been_added(dest, pkg):
             self._pm.add_package(dest, pkg)
 
-        with console.status(f"[bold green]Installing '{pkg.name}'..."):
+        pkg_name = self._package_name(dest, pkg)
+
+        with console.status(f"[bold green]Installing {pkg_name}..."):
             self._pm.install_package(dest, pkg)
-            location = self._pm.package_install_location(dest, pkg)
+            location = self._pm.package_install_location(dest, pkg).relative_to(
+                self._pm.project_root_directory()
+            )
+            pkg_name = self._package_name(dest, pkg)
             success(
-                f"Successfully installed package '{pkg.name}' at '{location}'",
+                f"Successfully installed package {pkg_name} at '{location}'",
             )
 
     def command_list(self):
@@ -292,7 +321,12 @@ Commands:
                 stats = self._pm.package_stats(dest, pkg)
 
                 table.add_row(
-                    pkg.name,
+                    self._package_name(
+                        dest,
+                        pkg,
+                        hide_dest=True,
+                        hide_stats=True,
+                    ),
                     str(install_dir),
                     stats.commit_hash[0:7],
                     stats.commit_date.isoformat(),
@@ -338,7 +372,7 @@ Commands:
         if not dest and not args.dest_name and len(self._pm.destinations()) == 1:
             dest = self._pm.destinations()[0]
 
-        # multiple destinations exist so we look for one which contains the pkg
+        # multiple destinations exist, so we look for one which contains the pkg
         if not dest and len(self._pm.destinations()) > 1:
             for destination in self._pm.destinations():
                 pkg = self._pm.find_package(destination, args.package)
@@ -357,25 +391,30 @@ Commands:
         if not pkg:
             fatal(f"Could not find package '{args.package}' in any dest.")
 
-        with console.status(f"[bold green]Uninstalling '{pkg.name}'..."):
+        pkg_name = self._package_name(dest, pkg)
+        with console.status(f"[bold green]Uninstalling {pkg_name}..."):
             self._pm.uninstall_package(dest, pkg)
-            location = self._pm.package_install_location(dest, pkg)
             success(
-                f"Successfully uninstalled package '{pkg.name}' at '{location}'",
+                f"Successfully uninstalled package {pkg_name}",
             )
 
     def command_install(self):
         tree = Tree("Installed packages:")
 
+        found_any = False
+
         with console.status("[bold green]Installing packages..."):
             for dest in self._pm.destinations():
                 for pkg in self._pm.packages_by_destination(dest):
+                    found_any = True
+
                     has_pkg_changed = self._pm.has_pkg_been_changed(dest, pkg)
                     already_installed = self._pm.is_package_installed(dest, pkg)
 
                     if already_installed and not has_pkg_changed:
+                        pkg_name = self._package_name(dest, pkg)
                         tree.add(
-                            f"[bold]{pkg.name}[/bold] is already installed.",
+                            f"{pkg_name} is already installed.",
                             style="dim",
                             guide_style="dim",
                         )
@@ -383,5 +422,9 @@ Commands:
 
                     self._pm.install_package(dest, pkg)
 
-                    tree.add(f"[bold]{pkg.name}[/bold] was installed")
-            console.print(tree)
+                    pkg_name = self._package_name(dest, pkg)
+                    tree.add(f"{pkg_name} has been installed.")
+            if found_any:
+                console.print(tree)
+                return
+            console.print("No packages were installed.")

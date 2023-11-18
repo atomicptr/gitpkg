@@ -21,8 +21,14 @@ _COMMAND_PREFIX = "command_"
 
 class CLI:
     _pm: PkgManager = None
+    _args: list[str] = None
 
-    def run(self):
+    def run(self, args: list[str] | None = None):
+        if args is None:
+            args = sys.argv
+
+        self._args = args
+
         if os.getenv("GITPKG_DEBUG") is not None:
             logging.basicConfig(
                 level=logging.DEBUG,
@@ -46,7 +52,7 @@ Commands:
         parser.add_argument("command", help="Subcommand to run")
         parser.add_help = False
 
-        args = parser.parse_args(sys.argv[1:2])
+        args = parser.parse_args(self._args[1:2])
         logging.debug(args)
 
         cmd = args.command.replace(":", "_")
@@ -157,7 +163,7 @@ Commands:
             type=str,
         )
 
-        args = parser.parse_args(sys.argv[2:])
+        args = parser.parse_args(self._args[2:])
         logging.debug(args)
 
         dest_path = Path().absolute() / args.path
@@ -230,7 +236,7 @@ Commands:
             type=str,
         )
 
-        args = parser.parse_args(sys.argv[2:])
+        args = parser.parse_args(self._args[2:])
         logging.debug(args)
 
         dest = None
@@ -358,7 +364,7 @@ Commands:
             type=str,
         )
 
-        args = parser.parse_args(sys.argv[2:])
+        args = parser.parse_args(self._args[2:])
         logging.debug(args)
 
         dest = self._pm.destination_by_name(args.package)

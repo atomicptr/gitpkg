@@ -80,3 +80,8 @@ ignore = [
 docstring-quotes = "double"
 inline-quotes = "double"
 multiline-quotes = "double"
+
+[tool.pytest.ini_options]
+testpaths = [
+  "tests",
+]

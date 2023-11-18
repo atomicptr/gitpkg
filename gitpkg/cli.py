@@ -63,6 +63,7 @@ Commands:
             fatal(err.raw_message)
 
     def _create_commands_list_str(self) -> str:
+        # TODO: improve column rendering
         commands: list[tuple[str, str]] = []
 
         for member in dir(self):
@@ -399,6 +400,7 @@ Commands:
             )
 
     def command_install(self):
+        """Install packages added to the config and apply config changes"""
         tree = Tree("Installed packages:")
 
         found_any = False

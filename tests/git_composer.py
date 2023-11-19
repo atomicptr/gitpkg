@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import random
 import shutil
 import tempfile
@@ -26,9 +27,9 @@ class GitComposer:
         repo_path = self.temp_dir / name
         repo = GitComposerRepo(Repo.init(repo_path), repo_path)
 
-        repo.commit_new_file("test.txt")
+        repo.new_file("test.txt")
         repo.change_file("test.txt")
-        repo.commit_new_file("test2.txt")
+        repo.new_file("test2.txt")
         repo.change_file("test2.txt")
 
         return repo
@@ -53,7 +54,7 @@ class GitComposerRepo:
     def path(self) -> Path:
         return self._path
 
-    def commit_new_file(self, filename: str, message: str = None):
+    def new_file(self, filename: str, message: str = None):
         filepath = self._path / filename
 
         filepath.parent.mkdir(exist_ok=True, parents=True)
@@ -79,6 +80,10 @@ class GitComposerRepo:
 
         self._repo.index.add([str(filepath)])
         self._repo.index.commit(f"update {filename}")
+
+    def file_hash(self, filename: str) -> str:
+        filepath = self._path / filename
+        return checksum(filepath)
 
     def is_corrupted(self) -> bool:
         # first to the simplest check...
@@ -119,4 +124,10 @@ class GitComposerRepo:
 def _random_str() -> str:
     hasher = sha3_256()
     hasher.update(str(random.randint(0, 1000000)).encode("utf-8"))
+    return hasher.hexdigest()
+
+
+def checksum(filepath: Path) -> str:
+    hasher = hashlib.sha3_256()
+    hasher.update(filepath.read_bytes())
     return hasher.hexdigest()

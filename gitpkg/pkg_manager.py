@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import enum
 import logging
 import os
 import shutil
@@ -8,7 +9,7 @@ from datetime import datetime
 from hashlib import sha3_256
 from pathlib import Path
 
-from git import GitConfigParser, Repo
+from git import FetchInfo, GitConfigParser, Repo
 
 from gitpkg.config import Config, Destination, PkgConfig
 from gitpkg.errors import (
@@ -51,6 +52,8 @@ class PkgManager:
         return [*self._config.packages[destination.name]]
 
     def add_destination(self, name: str, path: Path) -> Destination:
+        # TODO: validate destination name
+
         """Register a new destination"""
         for dest in self._config.destinations:
             if dest.name == name:
@@ -99,6 +102,8 @@ class PkgManager:
             return None
 
     def add_package(self, destination: Destination, pkg: PkgConfig) -> None:
+        # TODO: validate pkg.name
+
         """Add package to destination in config (does not install package)"""
         if self.is_package_registered(destination, pkg):
             raise PkgHasAlreadyBeenAddedError(destination, pkg)
@@ -300,6 +305,47 @@ class PkgManager:
             f"uninstalled package '{pkg.name}' from dest: " f"'{destination.name}'"
         )
 
+    def update_package(
+        self,
+        destination: Destination,
+        pkg: PkgConfig,
+        discard_untracked_changes: bool = False,
+    ) -> PkgUpdateResult:
+        if pkg.updates_disabled:
+            return PkgUpdateResult.UPDATES_DISABLED
+
+        submodule_location = self._get_pkg_submodule_location(destination, pkg)
+        submodule_repo = Repo(submodule_location)
+
+        has_untracked_changes = (
+            len(submodule_repo.untracked_files) > 0
+            or len(submodule_repo.index.diff(None)) > 0
+        )
+
+        if not discard_untracked_changes and has_untracked_changes:
+            return PkgUpdateResult.UNTRACKED_CHANGES
+
+        if discard_untracked_changes and has_untracked_changes:
+            for file in submodule_repo.untracked_files:
+                (submodule_location / file).unlink()
+            submodule_repo.head.reset(index=True, working_tree=True)
+
+        # TODO: if origin does not exist
+        res = submodule_repo.remotes.origin.pull()
+
+        if len(res) == 0:
+            return PkgUpdateResult.NO_UPDATE_AVAILABLE
+
+        fetch_info: FetchInfo = res[0]
+
+        if fetch_info.old_commit is None:
+            return PkgUpdateResult.NO_UPDATE_AVAILABLE
+
+        if fetch_info.commit != fetch_info.old_commit:
+            return PkgUpdateResult.UPDATED
+
+        return PkgUpdateResult.NO_UPDATE_AVAILABLE
+
     def _remove_pkg_from_gitmodules(
         self, destination: Destination, pkg: PkgConfig
     ) -> None:
@@ -393,3 +439,10 @@ class PkgManager:
 class PkgStats:
     commit_hash: str
     commit_date: datetime
+
+
+class PkgUpdateResult(enum.Enum):
+    NO_UPDATE_AVAILABLE = 0
+    UPDATES_DISABLED = 1
+    UPDATED = 2
+    UNTRACKED_CHANGES = 3

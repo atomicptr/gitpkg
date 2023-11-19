@@ -12,11 +12,12 @@ from rich.tree import Tree
 from gitpkg.config import Destination, PkgConfig
 from gitpkg.console import console, fatal, success
 from gitpkg.errors import (
+    AmbiguousDestinationError,
     CouldNotFindDestinationError,
-    DestinationCouldNotBeDeterminedError,
     GitPkgError,
+    UnknownPackageError,
 )
-from gitpkg.pkg_manager import PkgManager
+from gitpkg.pkg_manager import PkgManager, PkgUpdateResult
 from gitpkg.utils import extract_repository_name_from_url
 
 _COMMAND_PREFIX = "command_"
@@ -101,7 +102,7 @@ Commands:
 
         return commands_list
 
-    def _package_name(
+    def _render_package_name(
         self,
         dest: Destination,
         pkg: PkgConfig,
@@ -125,6 +126,35 @@ Commands:
             if count > 1:
                 prefix = f"{dest.name}/"
         return prefix + pkg_name + suffix
+
+    def _package_param(self, package_name: str) -> tuple[str | None, str | None]:
+        if "/" in package_name:
+            dest_name, pkg_name = package_name.split("/")
+            return dest_name, pkg_name
+        return None, package_name
+
+    def _determine_package_dest(
+        self, dest_name: str | None, pkg_name: str | None
+    ) -> Destination | None:
+        if dest_name:
+            return self._pm.find_destination(dest_name)
+
+        if len(self._pm.destinations()) == 1:
+            return self._pm.destinations()[0]
+
+        found_num = 0
+        found_dest = None
+
+        for dest in self._pm.destinations():
+            for pkg in self._pm.find_packages_by_destination(dest):
+                if pkg.name == pkg_name:
+                    found_num += 1
+                    found_dest = dest
+
+        if found_dest and found_num == 1:
+            return found_dest
+
+        raise AmbiguousDestinationError
 
     def command_dest_list(self):
         """List registered destinations"""
@@ -267,7 +297,7 @@ Commands:
             dest = self._pm.add_destination(cwd.name, cwd)
 
         if not dest:
-            raise DestinationCouldNotBeDeterminedError
+            raise AmbiguousDestinationError
 
         name = args.name
 
@@ -293,14 +323,14 @@ Commands:
         if not self._pm.is_package_registered(dest, pkg):
             self._pm.add_package(dest, pkg)
 
-        pkg_name = self._package_name(dest, pkg)
+        pkg_name = self._render_package_name(dest, pkg)
 
         with console.status(f"[bold green]Installing {pkg_name}..."):
             self._pm.install_package(dest, pkg)
             location = self._pm.package_install_location(dest, pkg).relative_to(
                 self._pm.project_root_directory()
             )
-            pkg_name = self._package_name(dest, pkg)
+            pkg_name = self._render_package_name(dest, pkg)
             success(
                 f"Successfully installed package {pkg_name} at '{location}'",
             )
@@ -339,7 +369,7 @@ Commands:
                 stats = self._pm.package_stats(dest, pkg)
 
                 table.add_row(
-                    self._package_name(
+                    self._render_package_name(
                         dest,
                         pkg,
                         hide_dest=True,
@@ -417,7 +447,7 @@ Commands:
         if not pkg:
             fatal(f"Could not find package '{args.package}' in any dest.")
 
-        pkg_name = self._package_name(dest, pkg)
+        pkg_name = self._render_package_name(dest, pkg)
         self._pm.uninstall_package(dest, pkg)
         success(f"Successfully uninstalled package {pkg_name}")
 
@@ -438,7 +468,7 @@ Commands:
                     already_installed = self._pm.is_package_installed(dest, pkg)
 
                     if already_installed and not has_pkg_changed:
-                        pkg_name = self._package_name(dest, pkg)
+                        pkg_name = self._render_package_name(dest, pkg)
                         tree.add(
                             f"{pkg_name} is already installed.",
                             style="dim",
@@ -448,9 +478,94 @@ Commands:
 
                     self._pm.install_package(dest, pkg)
 
-                    pkg_name = self._package_name(dest, pkg)
+                    pkg_name = self._render_package_name(dest, pkg)
                     tree.add(f"{pkg_name} has been installed.")
             if found_any:
                 console.print(tree)
                 return
             console.print("No packages were installed.")
+
+    def command_update(self):
+        """Update all (or one of the specified) packages."""
+
+        parser = argparse.ArgumentParser(
+            description=inspect.stack()[0][3].__doc__,
+        )
+
+        parser.add_argument(
+            "packages",
+            help="Name of the repositories",
+            action="extend",
+            nargs="*",
+        )
+
+        parser.add_argument(
+            "--force",
+            help="Discoards untracked changes in repositories to update them",
+            action="store_true",
+        )
+
+        args = parser.parse_args(self._args[2:])
+        logging.debug(args)
+
+        to_install: list[tuple[Destination, PkgConfig]] = []
+
+        for pkg_param in args.packages:
+            dest_name, pkg_name = self._package_param(pkg_param)
+
+            dest = self._determine_package_dest(dest_name, pkg_name)
+
+            if not dest:
+                # TODO: add better error
+                msg = "..."
+                raise CouldNotFindDestinationError(msg)
+
+            pkg = self._pm.find_package(dest, pkg_name)
+
+            if pkg is None:
+                # TODO: add better error, this error is shit
+                raise UnknownPackageError(dest, pkg_name)
+
+            to_install.append((dest, pkg))
+
+        # Nothing added means add them all
+        if len(args.packages) == 0:
+            for dest in self._pm.destinations():
+                for pkg in self._pm.find_packages_by_destination(dest):
+                    to_install.append((dest, pkg))
+
+        tree = Tree("Package update results:")
+
+        with console.status("[bold green]Updating packages..."):
+            for dest, pkg in to_install:
+                stats_before_update = self._pm.package_stats(dest, pkg)
+                update_result = self._pm.update_package(
+                    dest, pkg, discard_untracked_changes=args.force
+                )
+
+                pkg_name = self._render_package_name(dest, pkg)
+
+                match update_result:
+                    case PkgUpdateResult.NO_UPDATE_AVAILABLE:
+                        tree.add(
+                            f"{pkg_name} is already up to date.",
+                            style="dim",
+                            guide_style="dim",
+                        )
+                    case PkgUpdateResult.UPDATES_DISABLED:
+                        tree.add(f"{pkg_name} has updates disabled.")
+                    case PkgUpdateResult.UPDATED:
+                        old_hash = stats_before_update.commit_hash[0:7]
+                        tree.add(
+                            f"{pkg_name} was updated from ({old_hash})",
+                            style="green",
+                            guide_style="green",
+                        )
+                    case PkgUpdateResult.UNTRACKED_CHANGES:
+                        tree.add(
+                            f"{pkg_name} has untracked changes, update aborted!",
+                            style="red",
+                            guide_style="red",
+                        )
+
+            console.print(tree)

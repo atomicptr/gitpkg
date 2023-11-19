@@ -32,7 +32,7 @@ class CouldNotFindDestinationError(GitPkgError):
         )
 
 
-class DestinationCouldNotBeDeterminedError(GitPkgError):
+class AmbiguousDestinationError(GitPkgError):
     raw_message = "no destination could be determined."
 
 
@@ -53,9 +53,11 @@ class PackageAlreadyInstalledError(GitPkgError):
 
 
 class UnknownPackageError(GitPkgError):
-    def __init__(self, destination: Destination, pkg: PkgConfig):
+    def __init__(self, destination: Destination, pkg: PkgConfig | str):
+        if isinstance(pkg, PkgConfig):
+            pkg = pkg.name
         super().__init__(
-            f"package '{pkg.name}' is unknown (dest: '{destination.name}')",
+            f"package '{pkg}' is unknown (dest: '{destination.name}')",
         )
 
 

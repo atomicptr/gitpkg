@@ -8,7 +8,7 @@ from _pytest.capture import CaptureFixture
 
 from gitpkg.cli import CLI
 from gitpkg.config import Config
-from tests.git_composer import GitComposer
+from tests.git_composer import GitComposer, checksum
 
 
 def assert_destination_exists(toml: Path, name: str) -> None:
@@ -69,7 +69,7 @@ class TestCLI:
 
     def test_add_package(self):
         remote_repo = self._git.create_repository("remote_repo")
-        remote_repo.commit_new_file("yolo.txt")
+        remote_repo.new_file("yolo.txt")
 
         repo = self._git.create_repository("test_repo")
         vendor_dir = repo.path() / "libs"
@@ -89,7 +89,7 @@ class TestCLI:
 
     def test_add_package_multiple_destinations(self):
         remote_repo = self._git.create_repository("remote_repo")
-        remote_repo.commit_new_file("yolo.txt")
+        remote_repo.new_file("yolo.txt")
 
         repo = self._git.create_repository("test_repo")
         os.chdir(repo.path())
@@ -162,8 +162,8 @@ class TestCLI:
 
     def test_add_package_with_one_destination(self):
         remote_repo = self._git.create_repository("remote_repo")
-        remote_repo.commit_new_file("404.txt")
-        remote_repo.commit_new_file("subdir/yolo.txt")
+        remote_repo.new_file("404.txt")
+        remote_repo.new_file("subdir/yolo.txt")
 
         repo = self._git.create_repository("test_repo")
         os.chdir(repo.path())
@@ -205,7 +205,7 @@ class TestCLI:
 
         for i in range(10):
             dep = self._git.create_repository(f"dep_{str(i).zfill(3)}")
-            dep.commit_new_file(f"{str(i).zfill(3)}.txt")
+            dep.new_file(f"{str(i).zfill(3)}.txt")
 
             deps.append(dep)
 
@@ -378,9 +378,9 @@ class TestCLI:
 
     def test_install_with_config_changes(self):
         dep_a = self._git.create_repository("depA")
-        dep_a.commit_new_file("a/b/c/swag.txt")
+        dep_a.new_file("a/b/c/swag.txt")
         dep_b = self._git.create_repository("depB")
-        dep_b.commit_new_file("d/e/f/42.txt")
+        dep_b.new_file("d/e/f/42.txt")
 
         repo = self._git.create_repository("test_repo")
 
@@ -550,6 +550,112 @@ class TestCLI:
         assert (vendor_dir / "depB").exists()
         assert not repo.is_corrupted()
 
+    def test_update(self):
+        dep_a = self._git.create_repository("depA")
+        dep_b = self._git.create_repository("depB")
 
-# TODO: test cmd: update
-# TODO: test cmd: update, with local changes
+        repo = self._git.create_repository("test_repo")
+
+        vendor_dir = repo.path() / "libs"
+        vendor_dir.mkdir(parents=True, exist_ok=True)
+        os.chdir(vendor_dir)
+
+        cli = CLI()
+
+        cli.run([__file__, "add", str(dep_a.path().absolute())])
+        cli.run([__file__, "add", str(dep_b.path().absolute())])
+
+        os.chdir(repo.path())
+
+        dep_a.new_file("updated.txt")
+
+        updated_file = vendor_dir / "depA" / "updated.txt"
+
+        assert not updated_file.exists()
+
+        cli.run([__file__, "update"])
+
+        assert updated_file.exists()
+
+    def test_update_with_changes(self):
+        dep_a = self._git.create_repository("depA")
+        dep_a.new_file("new_file.txt")
+        dep_b = self._git.create_repository("depB")
+
+        repo = self._git.create_repository("test_repo")
+
+        vendor_dir = repo.path() / "libs"
+        vendor_dir.mkdir(parents=True, exist_ok=True)
+        os.chdir(vendor_dir)
+
+        cli = CLI()
+
+        cli.run([__file__, "add", str(dep_a.path().absolute())])
+        cli.run([__file__, "add", str(dep_b.path().absolute())])
+
+        os.chdir(repo.path())
+
+        dep_a.new_file("updated.txt")
+
+        new_file = vendor_dir / "depA" / "new_file.txt"
+
+        new_file_before_change = checksum(new_file)
+        new_file.write_text("CHANGED!")
+        new_file_after_change = checksum(new_file)
+
+        untracked_file = vendor_dir / "depB" / "untracked.txt"
+        untracked_file.write_text("UNTRACKED")
+
+        assert checksum(new_file) == new_file_after_change
+
+        cli.run([__file__, "update", "depA"])
+
+        assert checksum(new_file) == new_file_after_change
+
+        cli.run([__file__, "update", "depA", "--force"])
+
+        assert checksum(new_file) == new_file_before_change
+
+        assert untracked_file.exists()
+
+        cli.run([__file__, "update", "--force"])
+
+        assert not untracked_file.exists()
+
+    def test_update_with_disabled_updates(self):
+        dep_a = self._git.create_repository("depA")
+        dep_b = self._git.create_repository("depB")
+
+        repo = self._git.create_repository("test_repo")
+
+        vendor_dir = repo.path() / "libs"
+        vendor_dir.mkdir(parents=True, exist_ok=True)
+        os.chdir(vendor_dir)
+
+        cli = CLI()
+
+        cli.run([__file__, "add", str(dep_a.path().absolute()), "--disable-updates"])
+        cli.run([__file__, "add", str(dep_b.path().absolute())])
+
+        os.chdir(repo.path())
+
+        dep_a.new_file("updated.txt")
+        dep_a.change_file("updated.txt")
+        dep_a.change_file("updated.txt")
+
+        dep_b.new_file("updated.txt")
+        dep_b.change_file("updated.txt")
+
+        dep_a_updated_file = vendor_dir / "depA" / "updated.txt"
+        dep_b_updated_file = vendor_dir / "depB" / "updated.txt"
+
+        assert not dep_a_updated_file.exists()
+        assert not dep_b_updated_file.exists()
+
+        cli.run([__file__, "update"])
+
+        assert not dep_a_updated_file.exists()
+        assert dep_b_updated_file.exists()
+
+
+# TODO: test cmd: update, with commited changes locally but not on upstream

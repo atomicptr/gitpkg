@@ -12,7 +12,11 @@ from rich.tree import Tree
 
 from gitpkg.config import Destination, PkgConfig
 from gitpkg.console import console, fatal, success
-from gitpkg.errors import CouldNotFindDestinationError, GitPkgError
+from gitpkg.errors import (
+    CouldNotFindDestinationError,
+    DestinationCouldNotBeDeterminedError,
+    GitPkgError,
+)
 from gitpkg.pkg_manager import PkgManager
 from gitpkg.utils import extract_repository_name_from_url
 
@@ -251,11 +255,15 @@ Commands:
             if not dest:
                 raise CouldNotFindDestinationError(args.dest_name)
 
-        if not dest:
+        # if no destinations are known add current location as dest
+        if not dest and len(self._pm.destinations()) == 0:
             cwd = Path.cwd()
 
             logging.debug(f"register cwd as destination {cwd.absolute()}")
             dest = self._pm.add_destination(cwd.name, cwd)
+
+        if not dest:
+            raise DestinationCouldNotBeDeterminedError
 
         name = args.name
 

@@ -6,7 +6,9 @@ from gitpkg.config import Destination, PkgConfig
 class GitPkgError(Exception):
     raw_message: str = None
 
-    def __init__(self, message: str):
+    def __init__(self, message: str | None = None):
+        if message is None:
+            message = self.raw_message
         self.raw_message = message
         super().__init__(f"ERROR: git pkg: {message}")
 
@@ -28,6 +30,10 @@ class CouldNotFindDestinationError(GitPkgError):
         super().__init__(
             f"destination '{name}' could not be found.",
         )
+
+
+class DestinationCouldNotBeDeterminedError(GitPkgError):
+    raw_message = "no destination could be determined."
 
 
 class PkgHasAlreadyBeenAddedError(GitPkgError):

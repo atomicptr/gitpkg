@@ -53,6 +53,8 @@ class GitComposerRepo:
     def commit_new_file(self, filename: str, message: str = None):
         filepath = self._path / filename
 
+        filepath.parent.mkdir(exist_ok=True, parents=True)
+
         lines = [_random_str() for _ in range(100)]
         filepath.write_text("\n".join(lines))
 

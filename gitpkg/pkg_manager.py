@@ -81,7 +81,7 @@ class PkgManager:
 
     def package_stats(
         self, destination: Destination, pkg: PkgConfig
-    ) -> PackageStats | None:
+    ) -> PkgStats | None:
         """Get package related statistics"""
         submodule_location = self._get_pkg_submodule_location(destination, pkg)
 
@@ -91,7 +91,7 @@ class PkgManager:
         try:
             pkg_repo = Repo(submodule_location)
 
-            return PackageStats(
+            return PkgStats(
                 pkg_repo.head.commit.hexsha,
                 pkg_repo.head.commit.committed_datetime,
             )
@@ -390,6 +390,6 @@ class PkgManager:
 
 
 @dataclass
-class PackageStats:
+class PkgStats:
     commit_hash: str
     commit_date: datetime

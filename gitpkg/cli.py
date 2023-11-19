@@ -1,7 +1,6 @@
 import argparse
 import inspect
 import logging
-import os
 import sys
 from pathlib import Path
 
@@ -26,6 +25,10 @@ _COMMAND_PREFIX = "command_"
 class CLI:
     _pm: PkgManager = None
     _args: list[str] = None
+    _debug_mode: bool = False
+
+    def __init__(self, enable_debug_mode: bool = False):
+        self._debug_mode = enable_debug_mode
 
     def run(self, args: list[str] | None = None):
         if args is None:
@@ -33,7 +36,7 @@ class CLI:
 
         self._args = args
 
-        if os.getenv("GITPKG_DEBUG") is not None:
+        if self._debug_mode:
             logging.basicConfig(
                 level=logging.DEBUG,
                 handlers=[RichHandler()],
@@ -374,12 +377,11 @@ Commands:
         args = parser.parse_args(self._args[2:])
         logging.debug(args)
 
-        dest = self._pm.destination_by_name(args.package)
+        dest = self._pm.destination_by_name(args.dest_name)
 
         if len(self._pm.destinations()) == 0:
             console.print(
-                "No destinations registered yet, please do so via "
-                "destinations:register",
+                "No destinations registered yet, please do so via " "dest:register",
             )
             return
 
@@ -388,6 +390,7 @@ Commands:
 
         # multiple destinations exist, so we look for one which contains the pkg
         if not dest and len(self._pm.destinations()) > 1:
+            found_num = 0
             for destination in self._pm.destinations():
                 pkg = self._pm.find_package(destination, args.package)
 
@@ -395,7 +398,15 @@ Commands:
                     continue
 
                 dest = destination
-                break
+                found_num += 1
+
+            # if we found more than one, we should raise an error due to package
+            # name not being clear
+            if found_num > 1:
+                fatal(
+                    f"Found more than one package called '{args.package}'"
+                    "please re-run this command with the --dest-name specified."
+                )
 
         if not dest:
             fatal(f"Could not find package '{args.package}' in any dest.")
@@ -406,11 +417,8 @@ Commands:
             fatal(f"Could not find package '{args.package}' in any dest.")
 
         pkg_name = self._package_name(dest, pkg)
-        with console.status(f"[bold green]Uninstalling {pkg_name}..."):
-            self._pm.uninstall_package(dest, pkg)
-            success(
-                f"Successfully uninstalled package {pkg_name}",
-            )
+        self._pm.uninstall_package(dest, pkg)
+        success(f"Successfully uninstalled package {pkg_name}")
 
     def command_install(self):
         """Install packages added to the config and apply config changes"""

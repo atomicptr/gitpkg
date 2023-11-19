@@ -227,8 +227,146 @@ class TestCLI:
         for dep in deps:
             assert dep.path().name in captured.out
 
+    def test_remove(self):
+        dep_a = self._git.create_repository("depA")
+        dep_b = self._git.create_repository("depB")
 
-# TODO: test cmd: remove
+        repo = self._git.create_repository("test_repo")
+        vendor_dir = repo.path() / "libs"
+        vendor_dir.mkdir(parents=True, exist_ok=True)
+        os.chdir(vendor_dir)
+
+        cli = CLI()
+        cli.run([__file__, "add", str(dep_a.path().absolute())])
+        cli.run([__file__, "add", str(dep_b.path().absolute())])
+
+        toml_path = repo.path() / ".gitpkg.toml"
+
+        assert_destination_exists(toml_path, "libs")
+        assert_package_exists(toml_path, "libs", "depA")
+        assert_package_exists(toml_path, "libs", "depB")
+
+        cli.run([__file__, "remove", "depA"])
+
+        assert_package_exists(toml_path, "libs", "depB")
+
+        data = tomllib.loads(toml_path.read_text())
+        packages = data.get("packages", {}).get("libs", [])
+
+        assert len(list(filter(lambda pkg: pkg["name"] == "depA", packages))) == 0
+
+    def test_remove_with_multiple_dests(self):
+        dep_a = self._git.create_repository("depA")
+        dep_b = self._git.create_repository("depB")
+
+        repo = self._git.create_repository("test_repo")
+        os.chdir(repo.path())
+
+        vendor_dir = repo.path() / "libs"
+        vendor_dir.mkdir(parents=True, exist_ok=True)
+        vendor_dir2 = repo.path() / "lib2"
+        vendor_dir2.mkdir(parents=True, exist_ok=True)
+
+        cli = CLI()
+
+        cli.run([__file__, "dest:register", "libs"])
+        cli.run([__file__, "dest:register", "libs2"])
+
+        cli.run([__file__, "add", str(dep_a.path().absolute()), "--dest-name", "libs"])
+        cli.run([__file__, "add", str(dep_b.path().absolute()), "--dest-name", "libs2"])
+
+        toml_path = repo.path() / ".gitpkg.toml"
+
+        assert_destination_exists(toml_path, "libs")
+        assert_destination_exists(toml_path, "libs2")
+
+        assert_package_exists(toml_path, "libs", "depA")
+        assert_package_exists(toml_path, "libs2", "depB")
+
+        cli.run([__file__, "remove", "depA"])
+
+        assert_package_exists(toml_path, "libs2", "depB")
+
+        data = tomllib.loads(toml_path.read_text())
+
+        assert (
+            len(
+                list(
+                    filter(
+                        lambda pkg: pkg["name"] == "depA",
+                        data.get("packages", {}).get("libs", []),
+                    )
+                )
+            )
+            == 0
+        )
+        assert (
+            len(
+                list(
+                    filter(
+                        lambda pkg: pkg["name"] == "depA",
+                        data.get("packages", {}).get("libs2", []),
+                    )
+                )
+            )
+            == 0
+        )
+
+    def test_remote_with_one_dependency_in_multiple_destinations(self):
+        the_one = self._git.create_repository("the_one")
+
+        repo = self._git.create_repository("test_repo")
+        os.chdir(repo.path())
+
+        vendor_dir = repo.path() / "libs"
+        vendor_dir.mkdir(parents=True, exist_ok=True)
+        vendor_dir2 = repo.path() / "lib2"
+        vendor_dir2.mkdir(parents=True, exist_ok=True)
+
+        cli = CLI()
+
+        cli.run([__file__, "dest:register", "libs"])
+        cli.run([__file__, "dest:register", "libs2"])
+
+        cli.run(
+            [__file__, "add", str(the_one.path().absolute()), "--dest-name", "libs"]
+        )
+        cli.run(
+            [__file__, "add", str(the_one.path().absolute()), "--dest-name", "libs2"]
+        )
+
+        toml_path = repo.path() / ".gitpkg.toml"
+
+        assert_destination_exists(toml_path, "libs")
+        assert_destination_exists(toml_path, "libs2")
+
+        assert_package_exists(toml_path, "libs", "the_one")
+        assert_package_exists(toml_path, "libs2", "the_one")
+
+        with pytest.raises(SystemExit) as err:
+            cli.run([__file__, "remove", "the_one"])
+        assert err.type == SystemExit
+        assert err.value.code == 1
+
+        cli.run([__file__, "remove", "the_one", "--dest-name", "libs2"])
+
+        assert_package_exists(toml_path, "libs", "the_one")
+
+        data = tomllib.loads(toml_path.read_text())
+
+        assert (
+            len(
+                list(
+                    filter(
+                        lambda pkg: pkg["name"] == "the_one",
+                        data.get("packages", {}).get("libs2", []),
+                    )
+                )
+            )
+            == 0
+        )
+
+
 # TODO: test cmd: install, with nothing present
 # TODO: test cmd: install, with only .gitpkg/... part deleted
 # TODO: test cmd: install, with only .gitmodules part deleted

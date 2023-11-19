@@ -569,3 +569,8 @@ Commands:
                         )
 
             console.print(tree)
+
+
+# TODO: refactor other commands to use new mechanism for parsing package
+#  names instead of --dest-name
+# TODO: refacotr other commands to use new dest determine code

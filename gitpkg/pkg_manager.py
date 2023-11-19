@@ -271,6 +271,7 @@ class PkgManager:
                 url=pkg.url,
                 branch=pkg.branch,
             )
+            self._update_gitmodules_file(destination, pkg)
 
         if not pkg_package_root_dir.exists():
             raise PackageRootDirNotFoundError(pkg, pkg_package_root_dir)
@@ -352,17 +353,29 @@ class PkgManager:
         """Remove package entry from the .gitmodules file"""
         pkg_ident = self._package_ident(destination, pkg)
         gitmodules_file = self.project_root_directory() / ".gitmodules"
+        section = f'submodule "{pkg_ident}"'
 
         if gitmodules_file.exists():
             with GitConfigParser(gitmodules_file, read_only=False) as cp:
                 cp.read()
-                cp.remove_section(f'submodule "{pkg_ident}"')
+                cp.remove_section(section)
                 cp.write()
 
             # remove .gitmodules file if empy
             text = gitmodules_file.read_text()
             if len(text.strip()) == 0:
                 gitmodules_file.unlink()
+
+    def _update_gitmodules_file(self, destination: Destination, pkg: PkgConfig) -> None:
+        pkg_ident = self._package_ident(destination, pkg)
+        gitmodules_file = self.project_root_directory() / ".gitmodules"
+        section = f'submodule "{pkg_ident}"'
+
+        if gitmodules_file.exists():
+            with GitConfigParser(gitmodules_file, read_only=False) as cp:
+                cp.read()
+                cp.set(section, "update", "none")
+                cp.write()
 
     def _write_config(self) -> None:
         """Persist config file to disk"""

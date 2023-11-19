@@ -73,7 +73,7 @@ class PkgManager:
     def package_stats(
         self, destination: Destination, pkg: PkgConfig
     ) -> PackageStats | None:
-        package_dir = self.package_gitpkg_directory(destination, pkg)
+        package_dir = self._get_pkg_gitpkgs_location(destination, pkg)
 
         if not package_dir.exists():
             return None
@@ -128,8 +128,10 @@ class PkgManager:
             return False
 
         return (
-            self.package_install_location(destination, pkg).exists()
-            and self.package_gitpkg_directory(destination, pkg).exists()
+            (self.project_root_directory() / ".gitmodules").exists()
+            and self.package_install_location(destination, pkg).exists()
+            and self._get_pkg_gitpkgs_location(destination, pkg).exists()
+            and self._gitmodules_internal_location(destination, pkg).exists()
         )
 
     def find_package(self, destination: Destination, pkg_name: str) -> PkgConfig | None:
@@ -163,7 +165,7 @@ class PkgManager:
     def _has_repo_changed(self, destination: Destination, pkg: PkgConfig) -> bool:
         # no changes in config found, next test against the actual repo...
         if pkg.branch:
-            ref_repo = Repo(self.package_gitpkg_directory(destination, pkg))
+            ref_repo = Repo(self._get_pkg_gitpkgs_location(destination, pkg))
             if pkg.branch != ref_repo.active_branch.name:
                 logging.debug(
                     f"package has changed! repo branch is: "
@@ -183,7 +185,7 @@ class PkgManager:
 
         if pkg.package_root and pkg_path.is_symlink():
             source_path = (
-                self.package_gitpkg_directory(destination, pkg) / pkg.package_root
+                self._get_pkg_gitpkgs_location(destination, pkg) / pkg.package_root
             )
             target_path = Path(os.readlink(pkg_path))
             logging.debug(
@@ -207,50 +209,57 @@ class PkgManager:
         if not has_pkg_changed and self.is_package_installed(destination, pkg):
             raise PackageAlreadyInstalledError(destination, pkg)
 
-        package_dir = self.package_gitpkg_directory(destination, pkg)
+        pkg_gitpkgs_dir = self._get_pkg_gitpkgs_location(destination, pkg)
         install_dir = self.package_install_location(destination, pkg)
-        package_root_dir = package_dir / pkg.package_root
+        pkg_package_root_dir = pkg_gitpkgs_dir / pkg.package_root
 
         # create parent directories
-        package_dir.parent.mkdir(parents=True, exist_ok=True)
+        pkg_gitpkgs_dir.parent.mkdir(parents=True, exist_ok=True)
         install_dir.parent.mkdir(parents=True, exist_ok=True)
-
-        if package_dir.exists():
-            shutil.rmtree(package_dir)
-
-        internal_dir = self._internal_dir(destination, pkg)
-        if internal_dir.exists():
-            Repo.clone_from(internal_dir, package_dir)
-
-            gitdir = package_dir / ".git"
-
-            if gitdir.exists():
-                shutil.rmtree(gitdir)
-
-            rel_path = os.path.relpath(internal_dir, package_dir)
-            gitdir.write_text(f"gitdir: {rel_path}")
-        else:
-            self._repo.create_submodule(
-                name=self._package_ident(destination, pkg),
-                path=package_dir,
-                url=pkg.url,
-                branch=pkg.branch,
-            )
-
-        if not package_root_dir.exists():
-            raise PackageRootDirNotFoundError(pkg, package_root_dir)
 
         if install_dir.exists():
             install_dir.unlink()
 
-        install_dir.symlink_to(package_root_dir)
+        if pkg_gitpkgs_dir.exists():
+            shutil.rmtree(pkg_gitpkgs_dir)
+
+        gitmodules_file = self.project_root_directory() / ".gitmodules"
+
+        internal_dir = self._gitmodules_internal_location(destination, pkg)
+        if internal_dir.exists() and not gitmodules_file.exists():
+            shutil.rmtree(internal_dir)
+
+        if internal_dir.exists():
+            Repo.clone_from(internal_dir, pkg_gitpkgs_dir)
+
+            gitdir = pkg_gitpkgs_dir / ".git"
+
+            if gitdir.exists():
+                shutil.rmtree(gitdir)
+
+            rel_path = os.path.relpath(internal_dir, pkg_gitpkgs_dir)
+            gitdir.write_text(f"gitdir: {rel_path}")
+        else:
+            self._remove_pkg_from_gitmodules(destination, pkg)
+            self._repo.create_submodule(
+                name=self._package_ident(destination, pkg),
+                path=pkg_gitpkgs_dir,
+                url=pkg.url,
+                branch=pkg.branch,
+            )
+
+        if not pkg_package_root_dir.exists():
+            raise PackageRootDirNotFoundError(pkg, pkg_package_root_dir)
+
+        if install_dir.exists():
+            install_dir.unlink()
+
+        install_dir.symlink_to(pkg_package_root_dir)
 
         logging.debug(f"installed package '{pkg.name}' to {install_dir}")
 
     def uninstall_package(self, destination: Destination, pkg: PkgConfig) -> None:
-        pkg_ident = self._package_ident(destination, pkg)
-
-        internal_dir = self._internal_dir(destination, pkg)
+        internal_dir = self._gitmodules_internal_location(destination, pkg)
         if internal_dir.exists():
             shutil.rmtree(internal_dir)
 
@@ -258,22 +267,11 @@ class PkgManager:
         if install_dir.exists():
             install_dir.unlink()
 
-        package_dir = self.package_gitpkg_directory(destination, pkg)
+        package_dir = self._get_pkg_gitpkgs_location(destination, pkg)
         if package_dir.exists():
             shutil.rmtree(package_dir)
 
-        submodules_file = self.project_root_directory() / ".gitmodules"
-
-        if submodules_file.exists():
-            with GitConfigParser(submodules_file, read_only=False) as cp:
-                cp.read()
-                cp.remove_section(f'submodule "{pkg_ident}"')
-                cp.write()
-
-            # remove .gitmodules file if empy
-            text = submodules_file.read_text()
-            if len(text.strip()) == 0:
-                submodules_file.unlink()
+        self._remove_pkg_from_gitmodules(destination, pkg)
 
         if self.has_package_been_added(destination, pkg):
             self.remove_package(destination, pkg)
@@ -281,6 +279,23 @@ class PkgManager:
         logging.debug(
             f"uninstalled package '{pkg.name}' from dest: " f"'{destination.name}'"
         )
+
+    def _remove_pkg_from_gitmodules(
+        self, destination: Destination, pkg: PkgConfig
+    ) -> None:
+        pkg_ident = self._package_ident(destination, pkg)
+        gitmodules_file = self.project_root_directory() / ".gitmodules"
+
+        if gitmodules_file.exists():
+            with GitConfigParser(gitmodules_file, read_only=False) as cp:
+                cp.read()
+                cp.remove_section(f'submodule "{pkg_ident}"')
+                cp.write()
+
+            # remove .gitmodules file if empy
+            text = gitmodules_file.read_text()
+            if len(text.strip()) == 0:
+                gitmodules_file.unlink()
 
     def _write_config(self) -> None:
         logging.debug(f"Written to config file: {self.config_file()}")
@@ -292,7 +307,7 @@ class PkgManager:
     def config_file(self) -> Path:
         return self.project_root_directory() / _CONFIG_FILE
 
-    def packages_directory(self) -> Path:
+    def _gitpkgs_location(self) -> Path:
         return self.project_root_directory() / _GITPKGS_DIR
 
     def package_install_location(
@@ -302,12 +317,12 @@ class PkgManager:
     ) -> Path:
         return self.project_root_directory() / destination.path / pkg.name
 
-    def package_gitpkg_directory(
+    def _get_pkg_gitpkgs_location(
         self,
         destination: Destination,
         pkg: PkgConfig,
     ) -> Path:
-        return self.packages_directory() / self._package_ident(destination, pkg)
+        return self._gitpkgs_location() / self._package_ident(destination, pkg)
 
     def _package_ident(self, destination: Destination, pkg: PkgConfig) -> str:
         hasher = sha3_256()
@@ -317,7 +332,9 @@ class PkgManager:
         res = hasher.hexdigest()
         return res[0:32]
 
-    def _internal_dir(self, destination: Destination, pkg: PkgConfig) -> Path:
+    def _gitmodules_internal_location(
+        self, destination: Destination, pkg: PkgConfig
+    ) -> Path:
         return (
             self.project_root_directory()
             / ".git"

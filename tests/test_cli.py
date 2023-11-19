@@ -1,4 +1,5 @@
 import os
+import shutil
 from pathlib import Path
 
 import pytest
@@ -387,7 +388,7 @@ class TestCLI:
         vendor_dir.mkdir(parents=True, exist_ok=True)
         os.chdir(vendor_dir)
 
-        cli = CLI(enable_debug_mode=True)
+        cli = CLI()
 
         cli.run([__file__, "add", str(dep_a.path().absolute())])
         cli.run([__file__, "add", str(dep_b.path().absolute())])
@@ -422,10 +423,133 @@ class TestCLI:
         assert (repo.path() / "libs" / "depB" / "42.txt").exists()
         assert not repo.is_corrupted()
 
+    def test_install_with_everything_deleted(self):
+        dep_a = self._git.create_repository("depA")
+        dep_b = self._git.create_repository("depB")
 
-# TODO: test cmd: install, with nothing present
-# TODO: test cmd: install not updating only installing the currently present state
-# TODO: test cmd: install, with only .gitpkg/... part deleted
-# TODO: test cmd: install, with only .gitmodules part deleted
+        repo = self._git.create_repository("test_repo")
+
+        vendor_dir = repo.path() / "libs"
+        vendor_dir.mkdir(parents=True, exist_ok=True)
+        os.chdir(vendor_dir)
+
+        cli = CLI()
+
+        cli.run([__file__, "add", str(dep_a.path().absolute())])
+        cli.run([__file__, "add", str(dep_b.path().absolute())])
+
+        os.chdir(repo.path())
+
+        gitmodules = repo.path() / ".gitmodules"
+        gitpkgs = repo.path() / ".gitpkgs"
+        internal_dir = repo.path() / ".git" / "modules"
+
+        shutil.rmtree(internal_dir)
+        internal_dir.mkdir()
+        shutil.rmtree(gitpkgs)
+        gitmodules.unlink()
+
+        cli.run([__file__, "install"])
+
+        assert gitmodules.exists()
+        assert gitpkgs.exists()
+        assert (vendor_dir / "depA").exists()
+        assert (vendor_dir / "depB").exists()
+        assert not repo.is_corrupted()
+
+    def test_install_with_only_internal_dir_deleted(self):
+        dep_a = self._git.create_repository("depA")
+        dep_b = self._git.create_repository("depB")
+
+        repo = self._git.create_repository("test_repo")
+
+        vendor_dir = repo.path() / "libs"
+        vendor_dir.mkdir(parents=True, exist_ok=True)
+        os.chdir(vendor_dir)
+
+        cli = CLI()
+
+        cli.run([__file__, "add", str(dep_a.path().absolute())])
+        cli.run([__file__, "add", str(dep_b.path().absolute())])
+
+        os.chdir(repo.path())
+
+        gitmodules = repo.path() / ".gitmodules"
+        gitpkgs = repo.path() / ".gitpkgs"
+        internal_dir = repo.path() / ".git" / "modules"
+
+        shutil.rmtree(internal_dir)
+        internal_dir.mkdir()
+
+        cli.run([__file__, "install"])
+
+        assert gitmodules.exists()
+        assert gitpkgs.exists()
+        assert (vendor_dir / "depA").exists()
+        assert (vendor_dir / "depB").exists()
+        assert not repo.is_corrupted()
+
+    def test_install_with_only_gitmodules_deleted(self):
+        dep_a = self._git.create_repository("depA")
+        dep_b = self._git.create_repository("depB")
+
+        repo = self._git.create_repository("test_repo")
+
+        vendor_dir = repo.path() / "libs"
+        vendor_dir.mkdir(parents=True, exist_ok=True)
+        os.chdir(vendor_dir)
+
+        cli = CLI()
+
+        cli.run([__file__, "add", str(dep_a.path().absolute())])
+        cli.run([__file__, "add", str(dep_b.path().absolute())])
+
+        os.chdir(repo.path())
+
+        gitmodules = repo.path() / ".gitmodules"
+        gitpkgs = repo.path() / ".gitpkgs"
+        internal_dir = repo.path() / ".git" / "modules"
+
+        gitmodules.unlink()
+
+        cli.run([__file__, "install"])
+
+        assert gitmodules.exists()
+        assert gitpkgs.exists()
+        assert (vendor_dir / "depA").exists()
+        assert (vendor_dir / "depB").exists()
+        assert not repo.is_corrupted()
+
+    def test_install_with_only_gitpkgs_deleted(self):
+        dep_a = self._git.create_repository("depA")
+        dep_b = self._git.create_repository("depB")
+
+        repo = self._git.create_repository("test_repo")
+
+        vendor_dir = repo.path() / "libs"
+        vendor_dir.mkdir(parents=True, exist_ok=True)
+        os.chdir(vendor_dir)
+
+        cli = CLI()
+
+        cli.run([__file__, "add", str(dep_a.path().absolute())])
+        cli.run([__file__, "add", str(dep_b.path().absolute())])
+
+        os.chdir(repo.path())
+
+        gitmodules = repo.path() / ".gitmodules"
+        gitpkgs = repo.path() / ".gitpkgs"
+
+        shutil.rmtree(gitpkgs)
+
+        cli.run([__file__, "install"])
+
+        assert gitmodules.exists()
+        assert gitpkgs.exists()
+        assert (vendor_dir / "depA").exists()
+        assert (vendor_dir / "depB").exists()
+        assert not repo.is_corrupted()
+
+
 # TODO: test cmd: update
 # TODO: test cmd: update, with local changes

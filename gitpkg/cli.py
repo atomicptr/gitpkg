@@ -120,7 +120,7 @@ Commands:
         if not hide_dest and len(self._pm.destinations()) > 1:
             count = 0
             for d in self._pm.destinations():
-                if self._pm.has_package_been_added(d, pkg):
+                if self._pm.is_package_registered(d, pkg):
                     count += 1
             if count > 1:
                 prefix = f"{dest.name}/"
@@ -254,7 +254,7 @@ Commands:
             dest = self._pm.destinations()[0]
 
         if args.dest_name:
-            dest = self._pm.destination_by_name(args.dest_name)
+            dest = self._pm.find_destination(args.dest_name)
 
             if not dest:
                 raise CouldNotFindDestinationError(args.dest_name)
@@ -290,7 +290,7 @@ Commands:
             install_method=args.install_method,
         )
 
-        if not self._pm.has_package_been_added(dest, pkg):
+        if not self._pm.is_package_registered(dest, pkg):
             self._pm.add_package(dest, pkg)
 
         pkg_name = self._package_name(dest, pkg)
@@ -329,7 +329,7 @@ Commands:
         found_one = False
 
         for dest in self._pm.destinations():
-            for pkg in self._pm.packages_by_destination(dest):
+            for pkg in self._pm.find_packages_by_destination(dest):
                 found_one = True
 
                 install_dir = self._pm.package_install_location(dest, pkg).relative_to(
@@ -378,7 +378,7 @@ Commands:
         args = parser.parse_args(self._args[2:])
         logging.debug(args)
 
-        dest = self._pm.destination_by_name(args.dest_name)
+        dest = self._pm.find_destination(args.dest_name)
 
         if len(self._pm.destinations()) == 0:
             console.print(
@@ -429,10 +429,12 @@ Commands:
 
         with console.status("[bold green]Installing packages..."):
             for dest in self._pm.destinations():
-                for pkg in self._pm.packages_by_destination(dest):
+                for pkg in self._pm.find_packages_by_destination(dest):
                     found_any = True
 
-                    has_pkg_changed = self._pm.has_pkg_been_changed(dest, pkg)
+                    has_pkg_changed = self._pm.has_package_config_been_changed(
+                        dest, pkg
+                    )
                     already_installed = self._pm.is_package_installed(dest, pkg)
 
                     if already_installed and not has_pkg_changed:

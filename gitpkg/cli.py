@@ -262,6 +262,14 @@ Commands:
         )
 
         parser.add_argument(
+            "-rn",
+            "--package-root-with-name",
+            help="combines --package-root and --name into one command, name is"
+            "determined by package roots filename",
+            type=str,
+        )
+
+        parser.add_argument(
             "-b",
             "--branch",
             help="Define the branch to be used, defaults to the repository default",
@@ -285,6 +293,10 @@ Commands:
         logging.debug(args)
 
         name = args.name
+
+        if args.package_root_with_name:
+            args.package_root = args.package_root_with_name
+            name = args.package_root_with_name.split("/")[-1]
 
         if not name:
             name = extract_repository_name_from_url(args.repository_url)

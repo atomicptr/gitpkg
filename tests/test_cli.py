@@ -44,6 +44,12 @@ class TestCLI:
         vendor_dir.mkdir(parents=True, exist_ok=True)
 
         cli = CLI()
+
+        cli.run([__file__, "dest:list"])
+
+        captured = capsys.readouterr()
+        assert "No destinations" in captured.out
+
         cli.run([__file__, "dest:register", vendor_dir.name])
 
         toml_path = vendor_dir / ".." / ".gitpkg.toml"
@@ -188,8 +194,40 @@ class TestCLI:
         assert err.type == SystemExit
         assert err.value.code == 1
 
+    def test_list_packages(self, capsys: CaptureFixture[str]):
+        deps = []
 
-# TODO: test cmd: list
+        for i in range(10):
+            dep = self._git.create_repository(f"dep_{str(i).zfill(3)}")
+            dep.commit_new_file(f"{str(i).zfill(3)}.txt")
+
+            deps.append(dep)
+
+        repo = self._git.create_repository("test_repo")
+
+        os.chdir(repo.path())
+
+        cli = CLI()
+        vendor_dir = repo.path() / "libs"
+        vendor_dir.mkdir(parents=True, exist_ok=True)
+        cli.run([__file__, "dest:register", "libs"])
+
+        cli.run([__file__, "list"])
+        captured = capsys.readouterr()
+
+        assert "No packages" in captured.out
+
+        for dep in deps:
+            cli.run([__file__, "add", str(dep.path().absolute())])
+
+        cli.run([__file__, "list"])
+
+        captured = capsys.readouterr()
+
+        for dep in deps:
+            assert dep.path().name in captured.out
+
+
 # TODO: test cmd: remove
 # TODO: test cmd: install, with nothing present
 # TODO: test cmd: install, with only .gitpkg/... part deleted

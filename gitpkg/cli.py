@@ -306,8 +306,7 @@ Commands:
 
         if len(self._pm.destinations()) == 0:
             console.print(
-                "No destinations registered yet, please do so via "
-                "destinations:register",
+                "No destinations registered yet, please do so via dest:register",
             )
             return
 

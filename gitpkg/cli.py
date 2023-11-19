@@ -134,7 +134,10 @@ Commands:
         return None, package_name
 
     def _determine_package_dest(
-        self, dest_name: str | None, pkg_name: str | None
+        self,
+        dest_name: str | None = None,
+        pkg_name: str | None = None,
+        return_none: bool = False,
     ) -> Destination | None:
         if dest_name:
             return self._pm.find_destination(dest_name)
@@ -142,17 +145,21 @@ Commands:
         if len(self._pm.destinations()) == 1:
             return self._pm.destinations()[0]
 
-        found_num = 0
-        found_dest = None
+        if pkg_name is not None:
+            found_num = 0
+            found_dest = None
 
-        for dest in self._pm.destinations():
-            for pkg in self._pm.find_packages_by_destination(dest):
-                if pkg.name == pkg_name:
-                    found_num += 1
-                    found_dest = dest
+            for dest in self._pm.destinations():
+                for pkg in self._pm.find_packages_by_destination(dest):
+                    if pkg.name == pkg_name:
+                        found_num += 1
+                        found_dest = dest
 
-        if found_dest and found_num == 1:
-            return found_dest
+            if found_dest and found_num == 1:
+                return found_dest
+
+        if return_none:
+            return None
 
         raise AmbiguousDestinationError
 
@@ -277,17 +284,12 @@ Commands:
         args = parser.parse_args(self._args[2:])
         logging.debug(args)
 
-        dest = None
+        name = args.name
 
-        # no dest specified and only one is available? Auto pick that one
-        if not args.dest_name and len(self._pm.destinations()) == 1:
-            dest = self._pm.destinations()[0]
+        if not name:
+            name = extract_repository_name_from_url(args.repository_url)
 
-        if args.dest_name:
-            dest = self._pm.find_destination(args.dest_name)
-
-            if not dest:
-                raise CouldNotFindDestinationError(args.dest_name)
+        dest = self._determine_package_dest(args.dest_name, return_none=True)
 
         # if no destinations are known add current location as dest
         if not dest and len(self._pm.destinations()) == 0:
@@ -298,11 +300,6 @@ Commands:
 
         if not dest:
             raise AmbiguousDestinationError
-
-        name = args.name
-
-        if not name:
-            name = extract_repository_name_from_url(args.repository_url)
 
         # TODO: validate url
 
@@ -399,53 +396,16 @@ Commands:
             type=str,
         )
 
-        parser.add_argument(
-            "--dest-name",
-            help="Name of the destination",
-            type=str,
-        )
-
         args = parser.parse_args(self._args[2:])
         logging.debug(args)
 
-        dest = self._pm.find_destination(args.dest_name)
+        dest_name, pkg_name = self._package_param(args.package)
+        dest = self._determine_package_dest(dest_name, pkg_name)
 
-        if len(self._pm.destinations()) == 0:
-            console.print(
-                "No destinations registered yet, please do so via " "dest:register",
-            )
-            return
-
-        if not dest and not args.dest_name and len(self._pm.destinations()) == 1:
-            dest = self._pm.destinations()[0]
-
-        # multiple destinations exist, so we look for one which contains the pkg
-        if not dest and len(self._pm.destinations()) > 1:
-            found_num = 0
-            for destination in self._pm.destinations():
-                pkg = self._pm.find_package(destination, args.package)
-
-                if pkg is None:
-                    continue
-
-                dest = destination
-                found_num += 1
-
-            # if we found more than one, we should raise an error due to package
-            # name not being clear
-            if found_num > 1:
-                fatal(
-                    f"Found more than one package called '{args.package}'"
-                    "please re-run this command with the --dest-name specified."
-                )
-
-        if not dest:
-            fatal(f"Could not find package '{args.package}' in any dest.")
-
-        pkg = self._pm.find_package(dest, args.package)
+        pkg = self._pm.find_package(dest, pkg_name)
 
         if not pkg:
-            fatal(f"Could not find package '{args.package}' in any dest.")
+            fatal(f"Could not find package '{pkg_name}' in any dest.")
 
         pkg_name = self._render_package_name(dest, pkg)
         self._pm.uninstall_package(dest, pkg)
@@ -590,8 +550,3 @@ Commands:
                         )
 
             console.print(tree)
-
-
-# TODO: refactor other commands to use new mechanism for parsing package
-#  names instead of --dest-name
-# TODO: refacotr other commands to use new dest determine code

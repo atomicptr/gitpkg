@@ -357,7 +357,7 @@ class TestCLI:
         assert err.type == SystemExit
         assert err.value.code == 1
 
-        cli.run([__file__, "remove", "the_one", "--dest-name", "libs2"])
+        cli.run([__file__, "remove", "libs2/the_one"])
 
         assert_package_exists(toml_path, "libs", "the_one")
 

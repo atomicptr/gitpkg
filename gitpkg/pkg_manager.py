@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 from dataclasses import dataclass
 from datetime import datetime
@@ -20,7 +21,7 @@ from gitpkg.errors import (
     UnknownPackageError,
 )
 
-_VENDOR_DIR = ".gitpkgs"
+_GITPKGS_DIR = ".gitpkgs"
 _CONFIG_FILE = ".gitpkg.toml"
 
 
@@ -33,7 +34,7 @@ class PkgManager:
         self._config = config
 
     def destinations(self) -> list[Destination]:
-        return self._config.destinations
+        return [*self._config.destinations]
 
     def destination_by_name(self, name: str) -> Destination | None:
         for dest in self.destinations():
@@ -44,7 +45,7 @@ class PkgManager:
     def packages_by_destination(self, destination: Destination) -> list[PkgConfig]:
         if destination.name not in self._config.packages:
             return []
-        return self._config.packages[destination.name]
+        return [*self._config.packages[destination.name]]
 
     def add_destination(self, name: str, path: Path) -> Destination:
         for dest in self._config.destinations:
@@ -72,17 +73,20 @@ class PkgManager:
     def package_stats(
         self, destination: Destination, pkg: PkgConfig
     ) -> PackageStats | None:
-        vendor_dir = self.package_vendor_location(destination, pkg)
+        package_dir = self.package_gitpkg_directory(destination, pkg)
 
-        if not vendor_dir.exists():
+        if not package_dir.exists():
             return None
 
-        pkg_repo = Repo(vendor_dir)
+        try:
+            pkg_repo = Repo(package_dir)
 
-        return PackageStats(
-            pkg_repo.head.commit.hexsha,
-            pkg_repo.head.commit.committed_datetime,
-        )
+            return PackageStats(
+                pkg_repo.head.commit.hexsha,
+                pkg_repo.head.commit.committed_datetime,
+            )
+        except ValueError:
+            return None
 
     def add_package(self, destination: Destination, pkg: PkgConfig) -> None:
         if self.has_package_been_added(destination, pkg):
@@ -125,7 +129,7 @@ class PkgManager:
 
         return (
             self.package_install_location(destination, pkg).exists()
-            and self.package_vendor_location(destination, pkg).exists()
+            and self.package_gitpkg_directory(destination, pkg).exists()
         )
 
     def find_package(self, destination: Destination, pkg_name: str) -> PkgConfig | None:
@@ -138,19 +142,56 @@ class PkgManager:
 
     def has_pkg_been_changed(self, destination: Destination, pkg: PkgConfig) -> bool:
         ref_pkg = self.find_package(destination, pkg.name)
-
         if ref_pkg is None:
             raise UnknownPackageError(destination, pkg)
 
         if ref_pkg.url != pkg.url:
             raise PackageUrlChangedError(destination, ref_pkg, pkg)
 
-        return (
+        config_changed = (
             ref_pkg.package_root != pkg.package_root
             or ref_pkg.updates_disabled != pkg.updates_disabled
             or ref_pkg.branch != pkg.branch
             or ref_pkg.install_method != pkg.install_method
         )
+
+        if config_changed:
+            return True
+
+        return self._has_repo_changed(destination, pkg)
+
+    def _has_repo_changed(self, destination: Destination, pkg: PkgConfig) -> bool:
+        # no changes in config found, next test against the actual repo...
+        if pkg.branch:
+            ref_repo = Repo(self.package_gitpkg_directory(destination, pkg))
+            if pkg.branch != ref_repo.active_branch.name:
+                logging.debug(
+                    f"package has changed! repo branch is: "
+                    f"{ref_repo.active_branch.name}, but package "
+                    f"wanted: {pkg.branch}"
+                )
+                return False
+
+        pkg_path = self.package_install_location(destination, pkg)
+
+        # install method is not defined (link) or is link but the pkg is not a
+        # symlink
+        if (
+            not pkg.install_method or pkg.install_method == "link"
+        ) and not pkg_path.is_symlink():
+            return True
+
+        if pkg.package_root and pkg_path.is_symlink():
+            source_path = (
+                self.package_gitpkg_directory(destination, pkg) / pkg.package_root
+            )
+            target_path = Path(os.readlink(pkg_path))
+            logging.debug(
+                f"package root: Source is {source_path}, " f"Target is: {target_path}"
+            )
+            return str(source_path.absolute()) != str(target_path.absolute())
+
+        return False
 
     def install_package(self, destination: Destination, pkg: PkgConfig) -> None:
         if not self.has_package_been_added(destination, pkg):
@@ -166,22 +207,32 @@ class PkgManager:
         if not has_pkg_changed and self.is_package_installed(destination, pkg):
             raise PackageAlreadyInstalledError(destination, pkg)
 
-        internal_dir = self._internal_dir(destination, pkg)
-        if internal_dir.exists():
-            shutil.rmtree(internal_dir)
-
-        vendor_dir = self.package_vendor_location(destination, pkg)
+        package_dir = self.package_gitpkg_directory(destination, pkg)
         install_dir = self.package_install_location(destination, pkg)
-        package_root_dir = vendor_dir / pkg.package_root
+        package_root_dir = package_dir / pkg.package_root
 
         # create parent directories
-        vendor_dir.parent.mkdir(parents=True, exist_ok=True)
+        package_dir.parent.mkdir(parents=True, exist_ok=True)
         install_dir.parent.mkdir(parents=True, exist_ok=True)
 
-        if not vendor_dir.exists():
+        if package_dir.exists():
+            shutil.rmtree(package_dir)
+
+        internal_dir = self._internal_dir(destination, pkg)
+        if internal_dir.exists():
+            Repo.clone_from(internal_dir, package_dir)
+
+            gitdir = package_dir / ".git"
+
+            if gitdir.exists():
+                shutil.rmtree(gitdir)
+
+            rel_path = os.path.relpath(internal_dir, package_dir)
+            gitdir.write_text(f"gitdir: {rel_path}")
+        else:
             self._repo.create_submodule(
                 name=self._package_ident(destination, pkg),
-                path=vendor_dir,
+                path=package_dir,
                 url=pkg.url,
                 branch=pkg.branch,
             )
@@ -207,9 +258,9 @@ class PkgManager:
         if install_dir.exists():
             install_dir.unlink()
 
-        vendor_dir = self.package_vendor_location(destination, pkg)
-        if vendor_dir.exists():
-            shutil.rmtree(vendor_dir)
+        package_dir = self.package_gitpkg_directory(destination, pkg)
+        if package_dir.exists():
+            shutil.rmtree(package_dir)
 
         submodules_file = self.project_root_directory() / ".gitmodules"
 
@@ -241,8 +292,8 @@ class PkgManager:
     def config_file(self) -> Path:
         return self.project_root_directory() / _CONFIG_FILE
 
-    def vendor_directory(self) -> Path:
-        return self.project_root_directory() / _VENDOR_DIR
+    def packages_directory(self) -> Path:
+        return self.project_root_directory() / _GITPKGS_DIR
 
     def package_install_location(
         self,
@@ -251,12 +302,12 @@ class PkgManager:
     ) -> Path:
         return self.project_root_directory() / destination.path / pkg.name
 
-    def package_vendor_location(
+    def package_gitpkg_directory(
         self,
         destination: Destination,
         pkg: PkgConfig,
     ) -> Path:
-        return self.vendor_directory() / self._package_ident(destination, pkg)
+        return self.packages_directory() / self._package_ident(destination, pkg)
 
     def _package_ident(self, destination: Destination, pkg: PkgConfig) -> str:
         hasher = sha3_256()

@@ -114,7 +114,8 @@ Commands:
 
         if not hide_stats and self._pm.is_package_installed(dest, pkg):
             stats = self._pm.package_stats(dest, pkg)
-            suffix = f" ({stats.commit_hash[0:7]})"
+            if stats:
+                suffix = f" ({stats.commit_hash[0:7]})"
 
         if not hide_dest and len(self._pm.destinations()) > 1:
             count = 0
@@ -345,8 +346,8 @@ Commands:
                         hide_stats=True,
                     ),
                     str(install_dir),
-                    stats.commit_hash[0:7],
-                    stats.commit_date.isoformat(),
+                    stats.commit_hash[0:7] if stats else None,
+                    stats.commit_date.isoformat() if stats else None,
                 )
 
         if not found_one:

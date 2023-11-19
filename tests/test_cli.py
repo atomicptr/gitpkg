@@ -6,6 +6,7 @@ import tomllib
 from _pytest.capture import CaptureFixture
 
 from gitpkg.cli import CLI
+from gitpkg.config import Config
 from tests.git_composer import GitComposer
 
 
@@ -63,6 +64,7 @@ class TestCLI:
 
         assert "vendor" in captured.out
         assert "test_repo" in captured.out
+        assert not repo.is_corrupted()
 
     def test_add_package(self):
         remote_repo = self._git.create_repository("remote_repo")
@@ -82,6 +84,7 @@ class TestCLI:
 
         assert_destination_exists(toml_path, "libs")
         assert_package_exists(toml_path, "libs", "remote_repo")
+        assert not repo.is_corrupted()
 
     def test_add_package_multiple_destinations(self):
         remote_repo = self._git.create_repository("remote_repo")
@@ -154,6 +157,7 @@ class TestCLI:
             )
         assert err.type == SystemExit
         assert err.value.code == 1
+        assert not repo.is_corrupted()
 
     def test_add_package_with_one_destination(self):
         remote_repo = self._git.create_repository("remote_repo")
@@ -193,6 +197,7 @@ class TestCLI:
             )
         assert err.type == SystemExit
         assert err.value.code == 1
+        assert not repo.is_corrupted()
 
     def test_list_packages(self, capsys: CaptureFixture[str]):
         deps = []
@@ -226,6 +231,7 @@ class TestCLI:
 
         for dep in deps:
             assert dep.path().name in captured.out
+        assert not repo.is_corrupted()
 
     def test_remove(self):
         dep_a = self._git.create_repository("depA")
@@ -254,6 +260,7 @@ class TestCLI:
         packages = data.get("packages", {}).get("libs", [])
 
         assert len(list(filter(lambda pkg: pkg["name"] == "depA", packages))) == 0
+        assert not repo.is_corrupted()
 
     def test_remove_with_multiple_dests(self):
         dep_a = self._git.create_repository("depA")
@@ -311,6 +318,7 @@ class TestCLI:
             )
             == 0
         )
+        assert not repo.is_corrupted()
 
     def test_remote_with_one_dependency_in_multiple_destinations(self):
         the_one = self._git.create_repository("the_one")
@@ -365,9 +373,58 @@ class TestCLI:
             )
             == 0
         )
+        assert not repo.is_corrupted()
+
+    def test_install_with_config_changes(self):
+        dep_a = self._git.create_repository("depA")
+        dep_a.commit_new_file("a/b/c/swag.txt")
+        dep_b = self._git.create_repository("depB")
+        dep_b.commit_new_file("d/e/f/42.txt")
+
+        repo = self._git.create_repository("test_repo")
+
+        vendor_dir = repo.path() / "libs"
+        vendor_dir.mkdir(parents=True, exist_ok=True)
+        os.chdir(vendor_dir)
+
+        cli = CLI(enable_debug_mode=True)
+
+        cli.run([__file__, "add", str(dep_a.path().absolute())])
+        cli.run([__file__, "add", str(dep_b.path().absolute())])
+
+        os.chdir(repo.path())
+
+        toml_file = repo.path() / ".gitpkg.toml"
+
+        config = Config.from_path(toml_file)
+
+        packages = []
+
+        for pkg in config.packages.get("libs", []):
+            if pkg.name == "depA":
+                pkg.package_root = "a/b/c"
+                packages.append(pkg)
+                continue
+            if pkg.name == "depB":
+                pkg.package_root = "d/e/f"
+                packages.append(pkg)
+                continue
+
+        config.packages["libs"] = packages
+
+        toml_file.write_text(config.to_toml_string())
+
+        cli.run([__file__, "install"])
+
+        assert not (repo.path() / "libs" / "depA" / "test.txt").exists()
+        assert (repo.path() / "libs" / "depA" / "swag.txt").exists()
+        assert not (repo.path() / "libs" / "depB" / "test.txt").exists()
+        assert (repo.path() / "libs" / "depB" / "42.txt").exists()
+        assert not repo.is_corrupted()
 
 
 # TODO: test cmd: install, with nothing present
+# TODO: test cmd: install not updating only installing the currently present state
 # TODO: test cmd: install, with only .gitpkg/... part deleted
 # TODO: test cmd: install, with only .gitmodules part deleted
 # TODO: test cmd: update

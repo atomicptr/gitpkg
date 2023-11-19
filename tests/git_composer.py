@@ -16,7 +16,7 @@ class GitComposer:
     to_be_deleted: ClassVar[list[Path]] = []
 
     def setup(self):
-        self.temp_dir = Path(tempfile.mkdtemp(prefix="gitpkg_tests"))
+        self.temp_dir = Path(tempfile.mkdtemp(prefix="gitpkg_tests_"))
         self.temp_dir.mkdir(parents=True, exist_ok=True)
 
     def teardown(self):
@@ -37,6 +37,9 @@ class GitComposer:
     def cleanup():
         for directory in GitComposer.to_be_deleted:
             shutil.rmtree(directory)
+
+    def __str__(self) -> str:
+        return f"GitComposer ({self.temp_dir})"
 
 
 class GitComposerRepo:
@@ -76,6 +79,41 @@ class GitComposerRepo:
 
         self._repo.index.add([str(filepath)])
         self._repo.index.commit(f"update {filename}")
+
+    def is_corrupted(self) -> bool:
+        # first to the simplest check...
+        if not bool(self._repo.head.commit.hexsha) or not bool(
+            self._repo.head.commit.committed_datetime
+        ):
+            return True
+
+        is_gitpkg_project = (self._path / ".gitpkg.toml").exists()
+
+        # if this is not a gitpkg project probably not even corrupted lol
+        if not is_gitpkg_project:
+            return False
+
+        packages_dir = self._path / ".gitpkgs"
+        git_files = packages_dir.glob("*/.git")
+
+        for git_file in git_files:
+            if git_file.is_dir():
+                continue
+
+            data = git_file.read_text()
+
+            if not data.startswith("gitdir: "):
+                raise ValueError(f"Unknown .git file content found: {data}")
+
+            prefix_len = len("gitdir: ")
+            gitdir = git_file.parent / data[prefix_len:]
+
+            if not gitdir.exists():
+                return True
+        return False
+
+    def __str__(self) -> str:
+        return f"GitComposerRepo ({self._path})"
 
 
 def _random_str() -> str:

@@ -311,6 +311,7 @@ class PkgManager:
         destination: Destination,
         pkg: PkgConfig,
         discard_untracked_changes: bool = False,
+        check_only: bool = False,
     ) -> PkgUpdateResult:
         if pkg.updates_disabled:
             return PkgUpdateResult.UPDATES_DISABLED
@@ -332,7 +333,9 @@ class PkgManager:
             submodule_repo.head.reset(index=True, working_tree=True)
 
         # TODO: if origin does not exist
-        res = submodule_repo.remotes.origin.pull()
+        remote = submodule_repo.remotes.origin
+
+        res = remote.pull() if not check_only else remote.fetch()
 
         if len(res) == 0:
             return PkgUpdateResult.NO_UPDATE_AVAILABLE
@@ -343,7 +346,11 @@ class PkgManager:
             return PkgUpdateResult.NO_UPDATE_AVAILABLE
 
         if fetch_info.commit != fetch_info.old_commit:
-            return PkgUpdateResult.UPDATED
+            return (
+                PkgUpdateResult.UPDATED
+                if not check_only
+                else PkgUpdateResult.UPDATE_AVAILABLE
+            )
 
         return PkgUpdateResult.NO_UPDATE_AVAILABLE
 
@@ -458,4 +465,5 @@ class PkgUpdateResult(enum.Enum):
     NO_UPDATE_AVAILABLE = 0
     UPDATES_DISABLED = 1
     UPDATED = 2
-    UNTRACKED_CHANGES = 3
+    UPDATE_AVAILABLE = 3
+    UNTRACKED_CHANGES = 4

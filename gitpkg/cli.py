@@ -457,9 +457,12 @@ Commands:
 
         found_any = False
 
-        with console.status("[bold green]Installing packages..."):
+        with console.status("[bold green]Installing packages...") as status:
             for dest in self._pm.destinations():
                 for pkg in self._pm.find_packages_by_destination(dest):
+                    pkg_name = self._render_package_name(dest, pkg)
+                    status.update(f"[bold green]Installing {pkg_name}...")
+
                     found_any = True
 
                     has_pkg_changed = self._pm.has_package_config_been_changed(
@@ -505,6 +508,12 @@ Commands:
             action="store_true",
         )
 
+        parser.add_argument(
+            "--check",
+            help="Only check if updates are available, do not actually update",
+            action="store_true",
+        )
+
         args = parser.parse_args(self._args[2:])
         logging.debug(args)
 
@@ -536,11 +545,17 @@ Commands:
 
         tree = Tree("Package update results:")
 
-        with console.status("[bold green]Updating packages..."):
+        with console.status("[bold green]Updating packages...") as status:
             for dest, pkg in to_install:
+                pkg_name = self._render_package_name(dest, pkg)
+                status.update(f"[bold green]Updating {pkg_name}...")
+
                 stats_before_update = self._pm.package_stats(dest, pkg)
                 update_result = self._pm.update_package(
-                    dest, pkg, discard_untracked_changes=args.force
+                    dest,
+                    pkg,
+                    discard_untracked_changes=args.force,
+                    check_only=args.check,
                 )
 
                 pkg_name = self._render_package_name(dest, pkg)
@@ -558,6 +573,12 @@ Commands:
                         old_hash = stats_before_update.commit_hash[0:7]
                         tree.add(
                             f"{pkg_name} was updated from ({old_hash})",
+                            style="green",
+                            guide_style="green",
+                        )
+                    case PkgUpdateResult.UPDATE_AVAILABLE:
+                        tree.add(
+                            f"{pkg_name} has updates available!",
                             style="green",
                             guide_style="green",
                         )

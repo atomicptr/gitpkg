@@ -32,9 +32,9 @@ def assert_package_exists(toml: Path, dest: str, pkg: str) -> None:
 class TestCLI:
     _git: GitComposer
 
-    def setup_method(self):
+    def setup_method(self, method):
         self._git = GitComposer()
-        self._git.setup()
+        self._git.setup(method.__name__)
 
     def teardown_method(self):
         self._git.teardown()

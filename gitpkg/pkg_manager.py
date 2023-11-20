@@ -218,10 +218,21 @@ class PkgManager:
                 self._get_pkg_submodule_location(destination, pkg) / pkg.package_root
             )
             target_path = Path(os.readlink(pkg_path))
+
+            # this path should be relative, so we apply it on top of the install
+            # location
+            if not target_path.is_absolute():
+                vendor_dir = self.package_install_location(destination, pkg).parent
+                target_path = vendor_dir / target_path
+
+            # link target does not exist? Something changed!
+            if not target_path.exists():
+                return True
+
             logging.debug(
                 f"package root: Source is {source_path}, " f"Target is: {target_path}"
             )
-            return str(source_path.absolute()) != str(target_path.absolute())
+            return not source_path.samefile(target_path)
 
         return False
 
@@ -286,7 +297,9 @@ class PkgManager:
         if install_dir.exists():
             install_dir.unlink()
 
-        install_dir.symlink_to(pkg_package_root_dir)
+        install_dir.symlink_to(
+            os.path.relpath(pkg_package_root_dir, install_dir.parent)
+        )
 
         logging.debug(f"installed package '{pkg.name}' to {install_dir}")
 

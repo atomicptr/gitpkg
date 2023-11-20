@@ -16,8 +16,11 @@ class GitComposer:
 
     to_be_deleted: ClassVar[list[Path]] = []
 
-    def setup(self):
-        self.temp_dir = Path(tempfile.mkdtemp(prefix="gitpkg_tests_"))
+    def setup(self, prefix_extra: str = ""):
+        if len(prefix_extra) > 0:
+            prefix_extra += "_"
+
+        self.temp_dir = Path(tempfile.mkdtemp(prefix=f"gitpkg_{prefix_extra}"))
         self.temp_dir.mkdir(parents=True, exist_ok=True)
 
     def teardown(self):

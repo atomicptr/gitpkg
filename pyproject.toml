@@ -1,6 +1,5 @@
 [tool.poetry]
 name = "gitpkg"
-version = "0.1.0"
 description = "A git powered package manager built on top of submodules."
 authors = ["Christopher Kaster <me@atomicptr.de>"]
 license = "GPLv3"
@@ -12,6 +11,8 @@ classifiers = [
     "Topic :: Software Development",
     "License :: OSI Approved :: GNU General Public License v3 (GPLv3)"
 ]
+# required, but set automatically by poetry-dynamic-versioning
+version = "0.0.0"
 
 [tool.poetry.scripts]
 git-pkg = "gitpkg.main:main"
@@ -27,9 +28,16 @@ coverage = "^7.3.2"
 ruff = "^0.1.5"
 pytest = "^7.4.3"
 
+[tool.poetry-dynamic-versioning]
+enable = true
+vcs = "git"
+style = "semver"
+bump = true
+strict = true
+
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["poetry-core>=1.0.0", "poetry-dynamic-versioning"]
+build-backend = "poetry_dynamic_versioning.backend"
 
 [tool.ruff]
 select = [

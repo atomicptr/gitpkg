@@ -1,0 +1,31 @@
+on:
+  push:
+    tags:
+      - '*'
+
+jobs:
+  deploy-pypi:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    environment:
+      name: pypi
+      url: https://pypi.org/p/gitpkg
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v2
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pipx
+          pipx install poetry
+          poetry self add "poetry-dynamic-versioning[plugin]"
+          poetry install --without dev
+      - name: Build package
+        run: poetry build
+      - name: Publish package to pypi
+        uses: pypa/gh-action-pypi-publish@release/v1

@@ -9,6 +9,7 @@ from rich.logging import RichHandler
 from rich.table import Table
 from rich.tree import Tree
 
+from gitpkg._version import __version__
 from gitpkg.config import Destination, PkgConfig
 from gitpkg.console import console, fatal, success
 from gitpkg.errors import (
@@ -567,3 +568,7 @@ Commands:
                         )
 
             console.print(tree)
+
+    def command_version(self):
+        console.print(__version__)
+

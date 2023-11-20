@@ -85,6 +85,14 @@ class TestCLI:
 
         assert_destination_exists(toml_path, "libs")
         assert_package_exists(toml_path, "libs", "remote_repo")
+
+        assert (vendor_dir / "remote_repo").exists()
+
+        # must be relative path, regression  test for #8
+        remote_repo_install_link = Path(os.readlink(vendor_dir / "remote_repo"))
+        assert not remote_repo_install_link.is_absolute()
+        assert (vendor_dir / remote_repo_install_link).exists()
+
         assert not repo.is_corrupted()
 
     def test_add_package_multiple_destinations(self):

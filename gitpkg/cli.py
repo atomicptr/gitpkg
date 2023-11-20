@@ -15,6 +15,7 @@ from gitpkg.errors import (
     AmbiguousDestinationError,
     CouldNotFindDestinationError,
     GitPkgError,
+    PackageRootDirNotFoundError,
     UnknownPackageError,
 )
 from gitpkg.pkg_manager import PkgManager, PkgUpdateResult
@@ -334,15 +335,19 @@ Commands:
 
         pkg_name = self._render_package_name(dest, pkg)
 
-        with console.status(f"[bold green]Installing {pkg_name}..."):
-            self._pm.install_package(dest, pkg)
-            location = self._pm.package_install_location(dest, pkg).relative_to(
-                self._pm.project_root_directory()
-            )
-            pkg_name = self._render_package_name(dest, pkg)
-            success(
-                f"Successfully installed package {pkg_name} at '{location}'",
-            )
+        try:
+            with console.status(f"[bold green]Installing {pkg_name}..."):
+                self._pm.install_package(dest, pkg)
+                location = self._pm.package_install_location(dest, pkg).relative_to(
+                    self._pm.project_root_directory()
+                )
+                pkg_name = self._render_package_name(dest, pkg)
+                success(
+                    f"Successfully installed package {pkg_name} at '{location}'",
+                )
+        except PackageRootDirNotFoundError as err:
+            self._pm.remove_package(dest, pkg)
+            raise err
 
     def command_list(self):
         """List installed packages"""

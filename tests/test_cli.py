@@ -200,6 +200,28 @@ class TestCLI:
         assert err.value.code == 1
         assert not repo.is_corrupted()
 
+    def test_add_with_non_existant_package_root(self):
+        remote_repo = self._git.create_repository("remote_repo")
+        remote_repo.new_file("yolo.txt")
+
+        repo = self._git.create_repository("test_repo")
+        vendor_dir = repo.path() / "libs"
+        vendor_dir.mkdir(parents=True, exist_ok=True)
+        os.chdir(vendor_dir)
+
+        cli = CLI()
+
+        with pytest.raises(SystemExit) as err:
+            cli.run(
+                [__file__, "add", str(remote_repo.path().absolute()), "-rn", "subdir"]
+            )
+        assert err.type == SystemExit
+        assert err.value.code == 1
+
+        dep_path = vendor_dir / "subdir"
+
+        assert not dep_path.exists()
+
     def test_list_packages(self, capsys: CaptureFixture[str]):
         deps = []
 

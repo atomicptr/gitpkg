@@ -7,7 +7,6 @@ import re
 import shutil
 from dataclasses import dataclass
 from datetime import datetime
-from hashlib import sha3_256
 from pathlib import Path
 
 from git import FetchInfo, GitConfigParser, Repo
@@ -427,12 +426,7 @@ class PkgManager:
 
     def _package_ident(self, destination: Destination, pkg: PkgConfig) -> str:
         """Unique package identifier"""
-        hasher = sha3_256()
-        hasher.update(
-            str(self.package_install_location(destination, pkg)).encode("utf8"),
-        )
-        res = hasher.hexdigest()
-        return res[0:32]
+        return f"{destination.name}@{pkg.name}"
 
     def _gitmodules_internal_location(
         self, destination: Destination, pkg: PkgConfig

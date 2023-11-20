@@ -3,6 +3,7 @@ from __future__ import annotations
 import enum
 import logging
 import os
+import re
 import shutil
 from dataclasses import dataclass
 from datetime import datetime
@@ -15,6 +16,7 @@ from gitpkg.config import Config, Destination, PkgConfig
 from gitpkg.errors import (
     DestinationWithNameAlreadyExistsError,
     DestinationWithPathAlreadyExistsError,
+    NameInvalidError,
     PackageAlreadyInstalledError,
     PackageRootDirNotFoundError,
     PackageUrlChangedError,
@@ -24,6 +26,7 @@ from gitpkg.errors import (
 
 _GITPKGS_DIR = ".gitpkgs"
 _CONFIG_FILE = ".gitpkg.toml"
+_NAME_REGEX = r"^[\w\-.\s]+$"
 
 
 class PkgManager:
@@ -52,9 +55,11 @@ class PkgManager:
         return [*self._config.packages[destination.name]]
 
     def add_destination(self, name: str, path: Path) -> Destination:
-        # TODO: validate destination name
-
         """Register a new destination"""
+
+        if re.match(_NAME_REGEX, name) is None:
+            raise NameInvalidError(name)
+
         for dest in self._config.destinations:
             if dest.name == name:
                 raise DestinationWithNameAlreadyExistsError(name)
@@ -102,9 +107,11 @@ class PkgManager:
             return None
 
     def add_package(self, destination: Destination, pkg: PkgConfig) -> None:
-        # TODO: validate pkg.name
-
         """Add package to destination in config (does not install package)"""
+
+        if re.match(_NAME_REGEX, pkg.name) is None:
+            raise NameInvalidError(pkg.name)
+
         if self.is_package_registered(destination, pkg):
             raise PkgHasAlreadyBeenAddedError(destination, pkg)
 
@@ -118,6 +125,7 @@ class PkgManager:
 
     def remove_package(self, destination: Destination, pkg: PkgConfig) -> None:
         """Remove package from destination in config (does not uninstall package)"""
+
         if not self.is_package_registered(destination, pkg):
             raise UnknownPackageError(destination, pkg)
 

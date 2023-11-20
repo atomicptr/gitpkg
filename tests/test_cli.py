@@ -200,7 +200,7 @@ class TestCLI:
         assert err.value.code == 1
         assert not repo.is_corrupted()
 
-    def test_add_with_non_existant_package_root(self):
+    def test_add_with_non_existent_package_root(self):
         remote_repo = self._git.create_repository("remote_repo")
         remote_repo.new_file("yolo.txt")
 

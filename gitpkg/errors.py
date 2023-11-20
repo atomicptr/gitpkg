@@ -76,3 +76,8 @@ class PackageRootDirNotFoundError(GitPkgError):
             f"package '{pkg.name}' has unknown package root set to "
             f"'{pkg.package_root}' which is '{pkg_root_dir.absolute()}')",
         )
+
+
+class NameInvalidError(GitPkgError):
+    def __init__(self, name: str):
+        super().__init__(f"Name '{name}' is not valid!")

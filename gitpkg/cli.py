@@ -16,6 +16,7 @@ from gitpkg.errors import (
     AmbiguousDestinationError,
     CouldNotFindDestinationError,
     GitPkgError,
+    InvalidInstallMethodError,
     PackageRootDirNotFoundError,
     UnknownPackageError,
 )
@@ -322,6 +323,9 @@ Commands:
         if args.package_root:
             package_root = args.package_root
 
+        if args.install_method and args.install_method not in ["link"]:
+            raise InvalidInstallMethodError(args.install_method)
+
         pkg = PkgConfig(
             name=name,
             url=args.repository_url,
@@ -571,4 +575,3 @@ Commands:
 
     def command_version(self):
         console.print(__version__)
-

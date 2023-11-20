@@ -81,3 +81,8 @@ class PackageRootDirNotFoundError(GitPkgError):
 class NameInvalidError(GitPkgError):
     def __init__(self, name: str):
         super().__init__(f"Name '{name}' is not valid!")
+
+
+class InvalidInstallMethodError(GitPkgError):
+    def __init__(self, install_method: str):
+        super().__init__(f"Invalid install method: {install_method}")

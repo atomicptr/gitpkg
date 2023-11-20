@@ -2,4 +2,4 @@
 set -e
 cd "$(dirname $0)/.."
 
-coverage run -m pytest
+poetry run coverage run -m pytest

@@ -23,6 +23,7 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: Install dependencies
+        shell: bash
         run: |
           python -m pip install --upgrade pip
           pip install pipx
@@ -30,10 +31,13 @@ jobs:
           poetry self add "poetry-dynamic-versioning[plugin]"
           poetry install
       - name: Lint
+        shell: bash
         run: ./scripts/lint.sh
       - name: Test
+        shell: bash
         run: ./scripts/test.sh
       - name: Build
+        shell: bash
         run: |
           poetry build
           python -m pip install dist/gitpkg-*.whl --force-reinstall

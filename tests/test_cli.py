@@ -3,7 +3,13 @@ import shutil
 from pathlib import Path
 
 import pytest
-import tomllib
+import sys
+
+if sys.version < (3, 11):
+    import tomli as tomllib  # pragma: no cover
+else:
+    import tomllib  # pragma: no cover
+
 from _pytest.capture import CaptureFixture
 
 from gitpkg.cli import CLI

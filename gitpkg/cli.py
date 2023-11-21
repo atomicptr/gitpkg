@@ -183,8 +183,8 @@ Commands:
             box=None,
         )
 
-        table.add_column("Name")
-        table.add_column("Path")
+        table.add_column("Name", overflow="fold")
+        table.add_column("Path", overflow="fold")
 
         for dest in self._pm.destinations():
             table.add_row(dest.name, str(Path(dest.path).absolute()))
@@ -370,10 +370,10 @@ Commands:
             box=None,
         )
 
-        table.add_column("Name")
-        table.add_column("Install Dir")
-        table.add_column("Hash")
-        table.add_column("Last Update")
+        table.add_column("Name", overflow="fold")
+        table.add_column("Install Dir", overflow="fold")
+        table.add_column("Hash", overflow="fold")
+        table.add_column("Last Update", overflow="fold")
 
         found_one = False
 

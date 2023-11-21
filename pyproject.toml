@@ -18,15 +18,17 @@ version = "0.0.0"
 git-pkg = "gitpkg.main:main"
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = "^3.10"
 gitpython = "^3.1.40"
 dataclass-binder = "^0.3.4"
 rich = "^13.7.0"
-coverage = "^7.3.2"
+tomli = {version = "^2", python = "<3.11"}
+exceptiongroup = {version = "^1", python = "<3.11"}
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.1.5"
 pytest = "^7.4.3"
+coverage = "^7.3.2"
 
 [tool.poetry-dynamic-versioning]
 enable = true

@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 import sys
 
-if sys.version < (3, 11):
+if sys.version_info < (3, 11):
     import tomli as tomllib  # pragma: no cover
 else:
     import tomllib  # pragma: no cover

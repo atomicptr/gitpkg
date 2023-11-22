@@ -284,7 +284,7 @@ class PkgManager:
             else:
                 self._remove_pkg_from_gitmodules(destination, pkg)
                 self._repo.create_submodule(
-                    name=self._package_ident(destination, pkg),
+                    name=self.package_identifier(destination, pkg),
                     path=submodule_location,
                     url=pkg.url,
                     branch=pkg.branch,
@@ -387,7 +387,7 @@ class PkgManager:
         for dest_name in self._config.packages:
             for pkg in self._config.packages[dest_name]:
                 dest = self.find_destination(dest_name)
-                ident = self._package_ident(dest, pkg)
+                ident = self.package_identifier(dest, pkg)
 
                 if ident not in packages:
                     packages.append(ident)
@@ -460,7 +460,7 @@ class PkgManager:
             cp.write()
 
     def _repo_used_by_other_pkg(self, dest: Destination, pkg: PkgConfig) -> bool:
-        package_ident = self._package_ident(dest, pkg)
+        package_ident = self.package_identifier(dest, pkg)
 
         for ref_dest in self.destinations():
             for ref_pkg in self.find_packages_by_destination(ref_dest):
@@ -468,7 +468,7 @@ class PkgManager:
                 if dest.name == ref_dest.name and pkg.name == ref_pkg.name:
                     continue
 
-                ref_ident = self._package_ident(ref_dest, ref_pkg)
+                ref_ident = self.package_identifier(ref_dest, ref_pkg)
 
                 if package_ident == ref_ident:
                     return True
@@ -478,7 +478,7 @@ class PkgManager:
         self, destination: Destination, pkg: PkgConfig
     ) -> None:
         """Remove package entry from the .gitmodules file"""
-        pkg_ident = self._package_ident(destination, pkg)
+        pkg_ident = self.package_identifier(destination, pkg)
         gitmodules_file = self.project_root_directory() / ".gitmodules"
         section = f'submodule "{pkg_ident}"'
 
@@ -494,7 +494,7 @@ class PkgManager:
                 gitmodules_file.unlink()
 
     def _update_gitmodules_file(self, destination: Destination, pkg: PkgConfig) -> None:
-        pkg_ident = self._package_ident(destination, pkg)
+        pkg_ident = self.package_identifier(destination, pkg)
         gitmodules_file = self.project_root_directory() / ".gitmodules"
         section = f'submodule "{pkg_ident}"'
 
@@ -535,9 +535,9 @@ class PkgManager:
         pkg: PkgConfig,
     ) -> Path:
         """Submodule location of package"""
-        return self._gitpkgs_location() / self._package_ident(destination, pkg)
+        return self._gitpkgs_location() / self.package_identifier(destination, pkg)
 
-    def _package_ident(self, _dest: Destination, pkg: PkgConfig) -> str:
+    def package_identifier(self, _dest: Destination, pkg: PkgConfig) -> str:
         """Unique package identifier"""
         hasher = hashlib.sha3_256()
         hasher.update(
@@ -564,7 +564,7 @@ class PkgManager:
             self.project_root_directory()
             / ".git"
             / "modules"
-            / self._package_ident(destination, pkg)
+            / self.package_identifier(destination, pkg)
         )
 
     @staticmethod

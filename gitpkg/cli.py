@@ -520,18 +520,27 @@ Commands:
 
         tree = Tree("Package update results:")
 
+        updated_packages: dict[str, PkgUpdateResult] = {}
+
         with console.status("[bold green]Updating packages...") as status:
             for dest, pkg in to_install:
-                pkg_name = self._render_package_name(dest, pkg)
-                status.update(f"[bold green]Updating {pkg_name}...")
+                pkg_ident = self._pm.package_identifier(dest, pkg)
 
-                stats_before_update = self._pm.package_stats(dest, pkg)
-                update_result = self._pm.update_package(
-                    dest,
-                    pkg,
-                    discard_untracked_changes=args.force,
-                    check_only=args.check,
-                )
+                # there is no need to update a repo again if two
+                # packages share it
+                if pkg_ident not in updated_packages:
+                    pkg_name = self._render_package_name(dest, pkg)
+                    status.update(f"[bold green]Updating {pkg_name}...")
+
+                    stats_before_update = self._pm.package_stats(dest, pkg)
+                    updated_packages[pkg_ident] = self._pm.update_package(
+                        dest,
+                        pkg,
+                        discard_untracked_changes=args.force,
+                        check_only=args.check,
+                    )
+
+                update_result = updated_packages[pkg_ident]
 
                 pkg_name = self._render_package_name(dest, pkg)
 

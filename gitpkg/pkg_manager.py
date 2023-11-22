@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import enum
+import hashlib
 import logging
 import os
 import re
@@ -22,6 +23,7 @@ from gitpkg.errors import (
     PkgHasAlreadyBeenAddedError,
     UnknownPackageError,
 )
+from gitpkg.utils import extract_repository_name_from_url, symlink_exists
 
 _GITPKGS_DIR = ".gitpkgs"
 _CONFIG_FILE = ".gitpkg.toml"
@@ -149,12 +151,13 @@ class PkgManager:
         pkg: PkgConfig,
     ) -> bool:
         """Is the given package physicially installed on disk?"""
+
         if not self.is_package_registered(destination, pkg):
             return False
 
         return (
             (self.project_root_directory() / ".gitmodules").exists()
-            and self.package_install_location(destination, pkg).exists()
+            and symlink_exists(self.package_install_location(destination, pkg))
             and self._get_pkg_submodule_location(destination, pkg).exists()
             and self._gitmodules_internal_location(destination, pkg).exists()
         )
@@ -183,7 +186,6 @@ class PkgManager:
             ref_pkg.package_root != pkg.package_root
             or ref_pkg.updates_disabled != pkg.updates_disabled
             or ref_pkg.branch != pkg.branch
-            or ref_pkg.install_method != pkg.install_method
         )
 
         if config_changed:
@@ -206,14 +208,7 @@ class PkgManager:
 
         pkg_path = self.package_install_location(destination, pkg)
 
-        # install method is not defined (link) or is link but the pkg is not a
-        # symlink
-        if (
-            not pkg.install_method or pkg.install_method == "link"
-        ) and not pkg_path.is_symlink():
-            return True
-
-        if pkg.package_root and pkg_path.is_symlink():
+        if pkg.package_root and symlink_exists(pkg_path) and pkg_path.is_symlink():
             source_path = (
                 self._get_pkg_submodule_location(destination, pkg) / pkg.package_root
             )
@@ -226,7 +221,7 @@ class PkgManager:
                 target_path = vendor_dir / target_path
 
             # link target does not exist? Something changed!
-            if not target_path.exists():
+            if not source_path.exists() or not target_path.exists():
                 return True
 
             logging.debug(
@@ -238,6 +233,8 @@ class PkgManager:
 
     def install_package(self, destination: Destination, pkg: PkgConfig) -> None:
         """Install the package to the disk"""
+        self._cleanup_install()
+
         if not self.is_package_registered(destination, pkg):
             self.add_package(destination, pkg)
 
@@ -251,6 +248,8 @@ class PkgManager:
         if not has_pkg_changed and self.is_package_installed(destination, pkg):
             raise PackageAlreadyInstalledError(destination, pkg)
 
+        repo_used_by_other_pkg = self._repo_used_by_other_pkg(destination, pkg)
+
         submodule_location = self._get_pkg_submodule_location(destination, pkg)
         install_dir = self.package_install_location(destination, pkg)
         pkg_package_root_dir = submodule_location / pkg.package_root
@@ -259,10 +258,10 @@ class PkgManager:
         submodule_location.parent.mkdir(parents=True, exist_ok=True)
         install_dir.parent.mkdir(parents=True, exist_ok=True)
 
-        if install_dir.exists():
-            install_dir.unlink()
+        # delete if install dir is there (missing links are exists = False)
+        install_dir.unlink(missing_ok=True)
 
-        if submodule_location.exists():
+        if not repo_used_by_other_pkg and submodule_location.exists():
             shutil.rmtree(submodule_location)
 
         gitmodules_file = self.project_root_directory() / ".gitmodules"
@@ -271,30 +270,31 @@ class PkgManager:
         if internal_dir.exists() and not gitmodules_file.exists():
             shutil.rmtree(internal_dir)
 
-        if internal_dir.exists():
-            Repo.clone_from(internal_dir, submodule_location)
+        if not submodule_location.exists():
+            if internal_dir.exists():
+                Repo.clone_from(internal_dir, submodule_location)
 
-            gitdir = submodule_location / ".git"
+                gitdir = submodule_location / ".git"
 
-            if gitdir.exists():
-                shutil.rmtree(gitdir)
+                if gitdir.exists():
+                    shutil.rmtree(gitdir)
 
-            rel_path = os.path.relpath(internal_dir, submodule_location)
-            gitdir.write_text(f"gitdir: {rel_path}")
-        else:
-            self._remove_pkg_from_gitmodules(destination, pkg)
-            self._repo.create_submodule(
-                name=self._package_ident(destination, pkg),
-                path=submodule_location,
-                url=pkg.url,
-                branch=pkg.branch,
-            )
-            self._update_gitmodules_file(destination, pkg)
+                rel_path = os.path.relpath(internal_dir, submodule_location)
+                gitdir.write_text(f"gitdir: {rel_path}")
+            else:
+                self._remove_pkg_from_gitmodules(destination, pkg)
+                self._repo.create_submodule(
+                    name=self._package_ident(destination, pkg),
+                    path=submodule_location,
+                    url=pkg.url,
+                    branch=pkg.branch,
+                )
+                self._update_gitmodules_file(destination, pkg)
 
         if not pkg_package_root_dir.exists():
             raise PackageRootDirNotFoundError(pkg, pkg_package_root_dir)
 
-        if install_dir.exists():
+        if symlink_exists(install_dir):
             install_dir.unlink()
 
         install_dir.symlink_to(
@@ -305,19 +305,23 @@ class PkgManager:
 
     def uninstall_package(self, destination: Destination, pkg: PkgConfig) -> None:
         """Uninstalls the package from disk"""
+
+        repo_used_by_other_pkg = self._repo_used_by_other_pkg(destination, pkg)
+
         internal_dir = self._gitmodules_internal_location(destination, pkg)
-        if internal_dir.exists():
+        if not repo_used_by_other_pkg and internal_dir.exists():
             shutil.rmtree(internal_dir)
 
         install_dir = self.package_install_location(destination, pkg)
-        if install_dir.exists():
+        if symlink_exists(install_dir):
             install_dir.unlink()
 
         submodule_location = self._get_pkg_submodule_location(destination, pkg)
-        if submodule_location.exists():
+        if not repo_used_by_other_pkg and submodule_location.exists():
             shutil.rmtree(submodule_location)
 
-        self._remove_pkg_from_gitmodules(destination, pkg)
+        if not repo_used_by_other_pkg:
+            self._remove_pkg_from_gitmodules(destination, pkg)
 
         if self.is_package_registered(destination, pkg):
             self.remove_package(destination, pkg)
@@ -373,6 +377,102 @@ class PkgManager:
             )
 
         return PkgUpdateResult.NO_UPDATE_AVAILABLE
+
+    def _cleanup_install(self) -> None:
+        gitmodules_file = self.project_root_directory() / ".gitmodules"
+        section_regex = r"submodule \"(.+)\""
+
+        packages = []
+
+        for dest_name in self._config.packages:
+            for pkg in self._config.packages[dest_name]:
+                dest = self.find_destination(dest_name)
+                ident = self._package_ident(dest, pkg)
+
+                if ident not in packages:
+                    packages.append(ident)
+
+        # remove unused .gitpkgs dirs
+        for dir in self._gitpkgs_location().glob("*"):
+            if dir.name in packages:
+                continue
+            logging.debug(f"CLEAN: remove unused gitpkg {dir}")
+            shutil.rmtree(dir)
+
+        # remove links that point nowhere from dest dirs
+        for dest in self.destinations():
+            dest_path = self.project_root_directory() / dest.path
+
+            for dest_dir in dest_path.glob("*"):
+                if not dest_dir.is_symlink():
+                    continue
+                target_dir = (dest_dir.parent / os.readlink(dest_dir)).resolve()
+                if not symlink_exists(target_dir):
+                    logging.debug(f"CLEAN: remove symlink {dest_dir}")
+                    dest_dir.unlink()
+
+        if not gitmodules_file.exists():
+            return
+
+        with GitConfigParser(gitmodules_file, read_only=False) as cp:
+            cp.read()
+
+            outdated_sections = []
+
+            for section in cp.sections():
+                path = cp.get(section, "path")
+
+                # skip submodules that are unrelated to us
+                if not path.startswith(_GITPKGS_DIR):
+                    continue
+
+                found = False
+
+                for pkg_ident in packages:
+                    pkg_section = f'submodule "{pkg_ident}"'
+
+                    if section == pkg_section:
+                        found = True
+                        break
+
+                if found:
+                    continue
+
+                outdated_sections.append(section)
+
+            for section in outdated_sections:
+                matches = re.findall(section_regex, section)
+
+                if len(matches) == 0:
+                    continue
+
+                pkg_ident = matches[0]
+
+                internal_dir = (
+                    self.project_root_directory() / ".git" / "modules" / pkg_ident
+                )
+
+                if internal_dir.exists():
+                    logging.debug(f"CLEAN: remove internal dir {internal_dir}")
+                    shutil.rmtree(internal_dir)
+
+                cp.remove_section(section)
+            cp.write()
+
+    def _repo_used_by_other_pkg(self, dest: Destination, pkg: PkgConfig) -> bool:
+        package_ident = self._package_ident(dest, pkg)
+
+        for ref_dest in self.destinations():
+            for ref_pkg in self.find_packages_by_destination(ref_dest):
+                # ignore current package
+                if dest.name == ref_dest.name and pkg.name == ref_pkg.name:
+                    continue
+
+                ref_ident = self._package_ident(ref_dest, ref_pkg)
+
+                if package_ident == ref_ident:
+                    return True
+        return False
 
     def _remove_pkg_from_gitmodules(
         self, destination: Destination, pkg: PkgConfig
@@ -437,9 +537,24 @@ class PkgManager:
         """Submodule location of package"""
         return self._gitpkgs_location() / self._package_ident(destination, pkg)
 
-    def _package_ident(self, destination: Destination, pkg: PkgConfig) -> str:
+    def _package_ident(self, _dest: Destination, pkg: PkgConfig) -> str:
         """Unique package identifier"""
-        return f"{destination.name}@{pkg.name}"
+        hasher = hashlib.sha3_256()
+        hasher.update(
+            "::".join(
+                filter(
+                    lambda elem: elem is not None,
+                    [
+                        "gitpkg",
+                        pkg.url,
+                        pkg.branch,
+                    ],
+                )
+            ).encode("utf8")
+        )
+        # TODO: properly parse ident
+        reponame = extract_repository_name_from_url(pkg.url)
+        return f"{reponame}_{hasher.hexdigest()[0:7]}"
 
     def _gitmodules_internal_location(
         self, destination: Destination, pkg: PkgConfig

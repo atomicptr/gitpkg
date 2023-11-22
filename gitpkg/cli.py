@@ -16,7 +16,7 @@ from gitpkg.errors import (
     AmbiguousDestinationError,
     CouldNotFindDestinationError,
     GitPkgError,
-    InvalidInstallMethodError,
+    PackageAlreadyInstalledError,
     PackageRootDirNotFoundError,
     UnknownPackageError,
 )
@@ -323,16 +323,12 @@ Commands:
         if args.package_root:
             package_root = args.package_root
 
-        if args.install_method and args.install_method not in ["link"]:
-            raise InvalidInstallMethodError(args.install_method)
-
         pkg = PkgConfig(
             name=name,
             url=args.repository_url,
             package_root=package_root,
             updates_disabled=args.disable_updates,
             branch=args.branch,
-            install_method=args.install_method,
         )
 
         if not self._pm.is_package_registered(dest, pkg):
@@ -447,12 +443,9 @@ Commands:
 
                     found_any = True
 
-                    has_pkg_changed = self._pm.has_package_config_been_changed(
-                        dest, pkg
-                    )
-                    already_installed = self._pm.is_package_installed(dest, pkg)
-
-                    if already_installed and not has_pkg_changed:
+                    try:
+                        self._pm.install_package(dest, pkg)
+                    except PackageAlreadyInstalledError:
                         pkg_name = self._render_package_name(dest, pkg)
                         tree.add(
                             f"{pkg_name} is already installed.",
@@ -461,13 +454,13 @@ Commands:
                         )
                         continue
 
-                    self._pm.install_package(dest, pkg)
-
                     pkg_name = self._render_package_name(dest, pkg)
                     tree.add(f"{pkg_name} has been installed.")
+
             if found_any:
                 console.print(tree)
                 return
+
             console.print("No packages were installed.")
 
     def command_update(self):

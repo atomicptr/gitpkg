@@ -243,6 +243,7 @@ class TestCLI:
         dep_path = vendor_dir / "subdir"
 
         assert not dep_path.exists()
+        assert not repo.is_corrupted()
 
     def test_add_non_existant_repo(self):
         repo = self._git.create_repository("test_repo")
@@ -260,6 +261,46 @@ class TestCLI:
         dep_path = vendor_dir / "subdir"
 
         assert not dep_path.exists()
+        assert not repo.is_corrupted()
+
+    def test_add_one_repo_multiple_project_roots(self):
+        remote_repo = self._git.create_repository("remote_repo")
+        remote_repo.new_file("root_a/a.c")
+        remote_repo.new_file("root_b/b.c")
+        remote_repo.new_file("root_c/c.c")
+        remote_repo.new_file("root_d/d.c")
+        remote_repo.new_file("root_e/e.c")
+
+        repo = self._git.create_repository("test_repo")
+        libs_dir = repo.path() / "libs"
+        libs_dir.mkdir(parents=True, exist_ok=True)
+        os.chdir(libs_dir)
+
+        cli = CLI()
+        cli.run([__file__, "add", str(remote_repo.path().absolute()), "-rn", "root_a"])
+        cli.run([__file__, "add", str(remote_repo.path().absolute()), "-rn", "root_b"])
+        cli.run([__file__, "add", str(remote_repo.path().absolute()), "-rn", "root_c"])
+        cli.run([__file__, "add", str(remote_repo.path().absolute()), "-rn", "root_d"])
+        cli.run([__file__, "add", str(remote_repo.path().absolute()), "-rn", "root_e"])
+
+        toml_path = libs_dir / ".." / ".gitpkg.toml"
+
+        assert toml_path.exists()
+
+        assert_toml_dest_exists(toml_path, "libs")
+        assert_toml_pkg_exists(toml_path, "libs", "root_a")
+        assert_toml_pkg_exists(toml_path, "libs", "root_b")
+        assert_toml_pkg_exists(toml_path, "libs", "root_c")
+        assert_toml_pkg_exists(toml_path, "libs", "root_d")
+        assert_toml_pkg_exists(toml_path, "libs", "root_e")
+
+        assert (libs_dir / "root_a" / "a.c").exists()
+        assert (libs_dir / "root_b" / "b.c").exists()
+        assert (libs_dir / "root_c" / "c.c").exists()
+        assert (libs_dir / "root_d" / "d.c").exists()
+        assert (libs_dir / "root_e" / "e.c").exists()
+
+        assert not repo.is_corrupted()
 
     def test_list_packages(self, capsys: CaptureFixture[str]):
         deps = []

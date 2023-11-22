@@ -20,7 +20,9 @@ class GitComposer:
         if len(prefix_extra) > 0:
             prefix_extra += "_"
 
-        self.temp_dir = Path(tempfile.mkdtemp(prefix=f"gitpkg_{prefix_extra}")).resolve()
+        self.temp_dir = Path(
+            tempfile.mkdtemp(prefix=f"gitpkg_{prefix_extra}")
+        ).resolve()
         self.temp_dir.mkdir(parents=True, exist_ok=True)
 
     def teardown(self):

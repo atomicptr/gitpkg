@@ -1,9 +1,9 @@
 import os
 import shutil
+import sys
 from pathlib import Path
 
 import pytest
-import sys
 
 if sys.version_info < (3, 11):
     import tomli as tomllib  # pragma: no cover
@@ -17,7 +17,7 @@ from gitpkg.config import Config
 from tests.git_composer import GitComposer, checksum
 
 
-def assert_destination_exists(toml: Path, name: str) -> None:
+def assert_toml_dest_exists(toml: Path, name: str) -> None:
     assert toml.exists()
 
     data = tomllib.loads(toml.read_text())
@@ -26,7 +26,7 @@ def assert_destination_exists(toml: Path, name: str) -> None:
     assert len(list(filter(lambda d: d["name"] == name, data["destinations"]))) > 0
 
 
-def assert_package_exists(toml: Path, dest: str, pkg: str) -> None:
+def assert_toml_pkg_exists(toml: Path, dest: str, pkg: str) -> None:
     assert toml.exists()
 
     data = tomllib.loads(toml.read_text())
@@ -64,7 +64,7 @@ class TestCLI:
 
         assert toml_path.exists()
 
-        assert_destination_exists(toml_path, "vendor")
+        assert_toml_dest_exists(toml_path, "vendor")
 
         cli.run([__file__, "dest:list"])
         captured = capsys.readouterr()
@@ -89,8 +89,8 @@ class TestCLI:
 
         assert toml_path.exists()
 
-        assert_destination_exists(toml_path, "libs")
-        assert_package_exists(toml_path, "libs", "remote_repo")
+        assert_toml_dest_exists(toml_path, "libs")
+        assert_toml_pkg_exists(toml_path, "libs", "remote_repo")
 
         assert (vendor_dir / "remote_repo").exists()
 
@@ -110,18 +110,18 @@ class TestCLI:
 
         cli = CLI()
 
-        vendor_dir1 = repo.path() / "libs"
-        vendor_dir1.mkdir(parents=True, exist_ok=True)
+        libs_dir = repo.path() / "libs"
+        libs_dir.mkdir(parents=True, exist_ok=True)
         cli.run([__file__, "dest:register", "libs"])
 
-        vendor_dir2 = repo.path() / "vendor"
-        vendor_dir2.mkdir(parents=True, exist_ok=True)
+        vendor_dir = repo.path() / "vendor"
+        vendor_dir.mkdir(parents=True, exist_ok=True)
         cli.run([__file__, "dest:register", "vendor"])
 
         toml_path = repo.path() / ".gitpkg.toml"
 
-        assert_destination_exists(toml_path, "libs")
-        assert_destination_exists(toml_path, "vendor")
+        assert_toml_dest_exists(toml_path, "libs")
+        assert_toml_dest_exists(toml_path, "vendor")
 
         # test with no dest should raise error
         with pytest.raises(SystemExit) as err:
@@ -133,6 +133,9 @@ class TestCLI:
         cli.run(
             [__file__, "add", str(remote_repo.path().absolute()), "--dest-name", "libs"]
         )
+        # repo should be there
+        assert (libs_dir / "remote_repo").exists()
+
         cli.run(
             [
                 __file__,
@@ -142,9 +145,14 @@ class TestCLI:
                 "vendor",
             ]
         )
+        # repo should be there
+        assert (vendor_dir / "remote_repo").exists()
 
-        assert_package_exists(toml_path, "libs", "remote_repo")
-        assert_package_exists(toml_path, "vendor", "remote_repo")
+        # other repo  should also still be there
+        assert (libs_dir / "remote_repo").exists()
+
+        assert_toml_pkg_exists(toml_path, "libs", "remote_repo")
+        assert_toml_pkg_exists(toml_path, "vendor", "remote_repo")
 
         # installing same package again should cause error
         with pytest.raises(SystemExit) as err:
@@ -192,8 +200,8 @@ class TestCLI:
 
         cli.run([__file__, "add", str(remote_repo.path().absolute()), "-r", "subdir"])
 
-        assert_destination_exists(toml_path, "libs")
-        assert_package_exists(toml_path, "libs", "remote_repo")
+        assert_toml_dest_exists(toml_path, "libs")
+        assert_toml_pkg_exists(toml_path, "libs", "remote_repo")
 
         # test if subdir works
         assert (repo.path() / "libs" / "remote_repo" / "yolo.txt").exists()
@@ -231,6 +239,23 @@ class TestCLI:
             )
         assert err.type == SystemExit
         assert err.value.code == 1
+
+        dep_path = vendor_dir / "subdir"
+
+        assert not dep_path.exists()
+
+    def test_add_non_existant_repo(self):
+        repo = self._git.create_repository("test_repo")
+        vendor_dir = repo.path() / "libs"
+        vendor_dir.mkdir(parents=True, exist_ok=True)
+        os.chdir(vendor_dir)
+
+        remote_repo = repo.path().parent / "fake_remote_repo"
+
+        cli = CLI()
+
+        with pytest.raises(Exception) as err:
+            cli.run([__file__, "add", str(remote_repo.absolute()), "-rn", "subdir"])
 
         dep_path = vendor_dir / "subdir"
 
@@ -285,13 +310,13 @@ class TestCLI:
 
         toml_path = repo.path() / ".gitpkg.toml"
 
-        assert_destination_exists(toml_path, "libs")
-        assert_package_exists(toml_path, "libs", "depA")
-        assert_package_exists(toml_path, "libs", "depB")
+        assert_toml_dest_exists(toml_path, "libs")
+        assert_toml_pkg_exists(toml_path, "libs", "depA")
+        assert_toml_pkg_exists(toml_path, "libs", "depB")
 
         cli.run([__file__, "remove", "depA"])
 
-        assert_package_exists(toml_path, "libs", "depB")
+        assert_toml_pkg_exists(toml_path, "libs", "depB")
 
         data = tomllib.loads(toml_path.read_text())
         packages = data.get("packages", {}).get("libs", [])
@@ -321,15 +346,15 @@ class TestCLI:
 
         toml_path = repo.path() / ".gitpkg.toml"
 
-        assert_destination_exists(toml_path, "libs")
-        assert_destination_exists(toml_path, "libs2")
+        assert_toml_dest_exists(toml_path, "libs")
+        assert_toml_dest_exists(toml_path, "libs2")
 
-        assert_package_exists(toml_path, "libs", "depA")
-        assert_package_exists(toml_path, "libs2", "depB")
+        assert_toml_pkg_exists(toml_path, "libs", "depA")
+        assert_toml_pkg_exists(toml_path, "libs2", "depB")
 
         cli.run([__file__, "remove", "depA"])
 
-        assert_package_exists(toml_path, "libs2", "depB")
+        assert_toml_pkg_exists(toml_path, "libs2", "depB")
 
         data = tomllib.loads(toml_path.read_text())
 
@@ -382,11 +407,11 @@ class TestCLI:
 
         toml_path = repo.path() / ".gitpkg.toml"
 
-        assert_destination_exists(toml_path, "libs")
-        assert_destination_exists(toml_path, "libs2")
+        assert_toml_dest_exists(toml_path, "libs")
+        assert_toml_dest_exists(toml_path, "libs2")
 
-        assert_package_exists(toml_path, "libs", "the_one")
-        assert_package_exists(toml_path, "libs2", "the_one")
+        assert_toml_pkg_exists(toml_path, "libs", "the_one")
+        assert_toml_pkg_exists(toml_path, "libs2", "the_one")
 
         with pytest.raises(SystemExit) as err:
             cli.run([__file__, "remove", "the_one"])
@@ -395,7 +420,7 @@ class TestCLI:
 
         cli.run([__file__, "remove", "libs2/the_one"])
 
-        assert_package_exists(toml_path, "libs", "the_one")
+        assert_toml_pkg_exists(toml_path, "libs", "the_one")
 
         data = tomllib.loads(toml_path.read_text())
 

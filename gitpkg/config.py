@@ -13,7 +13,6 @@ class PkgConfig:
     package_root: str
     updates_disabled: bool = False
     branch: str = None
-    install_method: str = None
 
 
 @dataclass
@@ -45,8 +44,6 @@ class Config:
                     lines.append("updates-disabled = true")
                 if pkg.branch:
                     lines.append(f'branch = "{pkg.branch}"')
-                if pkg.install_method and pkg.install_method in ["link"]:
-                    lines.append(f'install-method = "{pkg.install_method}"')
                 lines.append("")
 
         for dest in self.destinations:

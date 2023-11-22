@@ -288,6 +288,7 @@ class PkgManager:
                     path=submodule_location,
                     url=pkg.url,
                     branch=pkg.branch,
+                    depth=1,
                 )
                 self._update_gitmodules_file(destination, pkg)
 

@@ -244,6 +244,23 @@ class TestCLI:
 
         assert not dep_path.exists()
 
+    def test_add_non_existant_repo(self):
+        repo = self._git.create_repository("test_repo")
+        vendor_dir = repo.path() / "libs"
+        vendor_dir.mkdir(parents=True, exist_ok=True)
+        os.chdir(vendor_dir)
+
+        remote_repo = repo.path().parent / "fake_remote_repo"
+
+        cli = CLI()
+
+        with pytest.raises(Exception) as err:
+            cli.run([__file__, "add", str(remote_repo.absolute()), "-rn", "subdir"])
+
+        dep_path = vendor_dir / "subdir"
+
+        assert not dep_path.exists()
+
     def test_list_packages(self, capsys: CaptureFixture[str]):
         deps = []
 

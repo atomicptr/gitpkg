@@ -27,7 +27,7 @@ _COMMAND_PREFIX = "command_"
 
 
 class CLI:
-    _pm: PkgManager = None
+    _pkg_manager: PkgManager | None = None
     _args: list[str] = None
     _debug_mode: bool = False
 
@@ -45,11 +45,6 @@ class CLI:
                 level=logging.DEBUG,
                 handlers=[RichHandler()],
             )
-
-        try:
-            self._pm = PkgManager.from_environment()
-        except InvalidGitRepositoryError:
-            fatal("could not find a git repository")
 
         parser = argparse.ArgumentParser(
             description="A git powered package manager built on top of submodules.",
@@ -73,6 +68,9 @@ Commands:
         if not hasattr(self, command_func):
             parser.print_help()
             fatal(f"Unrecognized command: {args.command}")
+
+        # reset package manager for every run
+        self._pkg_manager = None
 
         try:
             getattr(self, command_func)()
@@ -104,6 +102,18 @@ Commands:
             commands_list += f"\t{command.ljust(max_len)}\t{desc}\n"
 
         return commands_list
+
+    @property
+    def _pm(self):
+        """Initializes package manager only when needed"""
+        if self._pkg_manager:
+            return self._pkg_manager
+
+        try:
+            self._pkg_manager = PkgManager.from_environment()
+            return self._pkg_manager
+        except InvalidGitRepositoryError:
+            fatal("could not find a git repository")
 
     def _render_package_name(
         self,

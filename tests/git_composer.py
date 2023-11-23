@@ -90,6 +90,10 @@ class GitComposerRepo:
         filepath = self._path / filename
         return checksum(filepath)
 
+    def commit_files(self, files: list[str], message: str) -> None:
+        self._repo.index.add(files)
+        self._repo.index.commit(message)
+
     def is_corrupted(self) -> bool:
         # first to the simplest check...
         if not bool(self._repo.head.commit.hexsha) or not bool(

@@ -2,7 +2,8 @@ from pathlib import Path
 
 
 def extract_repository_name_from_url(url: str) -> str:
-    return url.rstrip("/").rsplit("/", maxsplit=1)[-1].removesuffix(".git")
+    # this seems to also work with urls at least as far as our use case goes...
+    return Path(url).name.removesuffix(".git")
 
 
 def symlink_exists(path: Path) -> bool:

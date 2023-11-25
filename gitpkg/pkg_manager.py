@@ -299,7 +299,8 @@ class PkgManager:
             install_dir.unlink()
 
         install_dir.symlink_to(
-            os.path.relpath(pkg_package_root_dir, install_dir.parent)
+            os.path.relpath(pkg_package_root_dir, install_dir.parent),
+            target_is_directory=True,
         )
 
         logging.debug(f"installed package '{pkg.name}' to {install_dir}")

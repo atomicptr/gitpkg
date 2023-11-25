@@ -12,3 +12,7 @@ def symlink_exists(path: Path) -> bool:
     except FileNotFoundError:
         return False
     return True
+
+
+def escape_url(url: str) -> str:
+    return str(Path(url))

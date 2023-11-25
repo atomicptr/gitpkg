@@ -21,7 +21,7 @@ from gitpkg.errors import (
     UnknownPackageError,
 )
 from gitpkg.pkg_manager import PkgManager, PkgUpdateResult
-from gitpkg.utils import extract_repository_name_from_url
+from gitpkg.utils import escape_url, extract_repository_name_from_url
 
 _COMMAND_PREFIX = "command_"
 
@@ -305,6 +305,9 @@ Commands:
         args = parser.parse_args(self._args[2:])
         logging.debug(args)
 
+        # make sure it is a proper url
+        args.repository_url = escape_url(args.repository_url)
+
         name = args.name
 
         if args.package_root_with_name:
@@ -325,8 +328,6 @@ Commands:
 
         if not dest:
             raise AmbiguousDestinationError
-
-        # TODO: validate url
 
         package_root = "."
 

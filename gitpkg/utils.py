@@ -15,4 +15,6 @@ def symlink_exists(path: Path) -> bool:
 
 
 def escape_url(url: str) -> str:
-    return str(Path(url))
+    if Path(url).exists():
+        return str(Path(url).as_posix())
+    return url

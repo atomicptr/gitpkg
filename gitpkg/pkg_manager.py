@@ -302,6 +302,8 @@ class PkgManager:
             os.path.relpath(pkg_package_root_dir, install_dir.parent)
         )
 
+        self._recursively_install_packages(destination, pkg)
+
         logging.debug(f"installed package '{pkg.name}' to {install_dir}")
 
     def uninstall_package(self, destination: Destination, pkg: PkgConfig) -> None:
@@ -460,6 +462,16 @@ class PkgManager:
                 cp.remove_section(section)
             cp.write()
 
+    def _recursively_install_packages(
+        self, destination: Destination, pkg: PkgConfig
+    ) -> None:
+        pkg_dir = self._get_pkg_submodule_location(destination, pkg)
+        pm = PkgManager.from_path(pkg_dir)
+
+        for dest in pm.destinations():
+            for p in pm.find_packages_by_destination(dest):
+                pm.install_package(dest, p)
+
     def _repo_used_by_other_pkg(self, dest: Destination, pkg: PkgConfig) -> bool:
         package_ident = self.package_identifier(dest, pkg)
 
@@ -569,9 +581,14 @@ class PkgManager:
         )
 
     @staticmethod
-    def from_environment():
+    def from_environment() -> PkgManager:
         """Create a package manager for the nearest git project"""
-        repo = Repo(Path.cwd(), search_parent_directories=True)
+        return PkgManager.from_path(Path.cwd(), True)
+
+    @staticmethod
+    def from_path(path: Path, search_parents: bool = False) -> PkgManager:
+        """Create a package manager for path"""
+        repo = Repo(path, search_parent_directories=search_parents)
         config = Config()
 
         config_file = PkgManager._project_root_directory(repo) / _CONFIG_FILE

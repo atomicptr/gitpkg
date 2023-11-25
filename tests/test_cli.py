@@ -735,5 +735,41 @@ class TestCLI:
         assert not dep_a_updated_file.exists()
         assert dep_b_updated_file.exists()
 
+    def test_install_recursive_gitpkgs(self):
+        cli = CLI()
 
-# TODO: test cmd: update, with commited changes locally but not on upstream
+        c_repo = self._git.create_repository("repo_c")
+        c_repo.new_file("c_file.c")
+
+        b_repo = self._git.create_repository("repo_b")
+        b_repo.new_file("b_file.c")
+        os.chdir(b_repo.path())
+
+        cli.run([__file__, "dest:register", "libs"])
+        cli.run([__file__, "add", str(c_repo.path().absolute())])
+
+        assert (b_repo.path() / "libs" / "repo_c" / "c_file.c").exists()
+
+        b_repo.commit_files([".gitpkgs", ".gitpkg.toml", ".gitmodules", "libs"], "add repo_c")
+
+        a_repo = self._git.create_repository("repo_a")
+        a_repo.new_file("a_file.c")
+        os.chdir(a_repo.path())
+
+        cli.run([__file__, "dest:register", "libs"])
+        cli.run([__file__, "add", str(b_repo.path().absolute())])
+
+        assert (a_repo.path() / "libs" / "repo_b" / "b_file.c").exists()
+        assert (a_repo.path() / "libs" / "repo_b" / "libs" / "repo_c" / "c_file.c").exists()
+
+        b_repo.commit_files([".gitpkgs", ".gitpkg.toml", ".gitmodules", "libs"], "add repo_b")
+
+        repo = self._git.create_repository("test_repo")
+        os.chdir(a_repo.path())
+
+        cli.run([__file__, "dest:register", "libs"])
+        cli.run([__file__, "add", str(a_repo.path().absolute())])
+
+        assert (repo.path() / "libs" / "repo_a" / "a_file.c").exists()
+        assert (repo.path() / "libs" / "repo_a" / "libs" / "repo_b" / "b_file.c").exists()
+        assert (repo.path() / "libs" / "repo_a" / "libs" / "repo_b" / "libs" / "repo_c" / "c_file.c").exists()

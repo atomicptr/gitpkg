@@ -1,5 +1,9 @@
+import logging
 import re
 import shutil
+import stat
+import sys
+from collections.abc import Callable
 from pathlib import Path
 
 _REPOSITORY_PARSE_REGEX = [
@@ -48,4 +52,17 @@ def safe_dir_delete(path: Path) -> None:
         path.unlink()
         return
 
-    shutil.rmtree(path)
+    shutil.rmtree(path, onerror=fix_permissions)
+
+
+def fix_permissions(
+    redo_func: Callable[[str], None], path: str, err: any
+) -> None:
+    """This function aims to make readonly files deletable on windows using
+    the shutil.rmtree onerror functions"""
+    if sys.platform != "win32":
+        return
+    p = Path(path)
+    logging.debug(f"Something went wrong with {p.absolute()}: {err}")
+    p.chmod(stat.S_IWRITE)
+    redo_func(path)

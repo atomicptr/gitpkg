@@ -10,6 +10,7 @@ from gitpkg.errors import (
     PackageAlreadyInstalledError,
     PackageRootDirNotFoundError,
 )
+from gitpkg.utils import fix_permissions
 
 if sys.version_info < (3, 11):
     import tomli as tomllib  # pragma: no cover
@@ -634,9 +635,9 @@ class TestCLI:
         gitpkgs = repo.path() / ".gitpkgs"
         internal_dir = repo.path() / ".git" / "modules"
 
-        shutil.rmtree(internal_dir)
+        shutil.rmtree(internal_dir, onerror=fix_permissions)
         internal_dir.mkdir()
-        shutil.rmtree(gitpkgs)
+        shutil.rmtree(gitpkgs, onerror=fix_permissions)
         gitmodules.unlink()
 
         run_cli(["install"])
@@ -666,7 +667,7 @@ class TestCLI:
         gitpkgs = repo.path() / ".gitpkgs"
         internal_dir = repo.path() / ".git" / "modules"
 
-        shutil.rmtree(internal_dir)
+        shutil.rmtree(internal_dir, onerror=fix_permissions)
         internal_dir.mkdir()
 
         run_cli(["install"])
@@ -724,7 +725,7 @@ class TestCLI:
         gitmodules = repo.path() / ".gitmodules"
         gitpkgs = repo.path() / ".gitpkgs"
 
-        shutil.rmtree(gitpkgs)
+        shutil.rmtree(gitpkgs, onerror=fix_permissions)
 
         run_cli(["install"])
 

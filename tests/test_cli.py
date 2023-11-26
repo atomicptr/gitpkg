@@ -293,6 +293,24 @@ class TestCLI:
 
         assert not repo.is_corrupted()
 
+    def test_add_with_install_method_copy(self):
+        remote_repo = self._git.create_repository("remote_repo")
+        repo = self._git.create_repository("test_repo")
+        os.chdir(repo.path())
+
+        run_cli(["dest", "add", "libs"])
+        libs_dir = repo.path() / "libs"
+
+        run_cli(
+            ["add", remote_repo.path().absolute(), "--install-method", "copy"]
+        )
+
+        dep = libs_dir / "remote_repo"
+
+        assert dep.exists()
+        assert (dep / "test.txt").exists()
+        assert not dep.is_symlink()
+
     def test_list_packages(self, capsys: CaptureFixture[str]):
         deps = []
 

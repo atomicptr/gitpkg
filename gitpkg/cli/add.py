@@ -1,4 +1,5 @@
 import logging
+import sys
 from pathlib import Path
 
 import rich_click as click
@@ -9,7 +10,7 @@ from gitpkg.cli.helpers import (
     render_package_name,
 )
 from gitpkg.cli.root import Context, root
-from gitpkg.config import PkgConfig
+from gitpkg.config import InstallMethod, PkgConfig
 from gitpkg.errors import AmbiguousDestinationError, PackageRootDirNotFoundError
 from gitpkg.utils import extract_repository_name_from_url
 
@@ -41,6 +42,10 @@ from gitpkg.utils import extract_repository_name_from_url
     help="Disable updates for this repository",
     is_flag=True,
 )
+@click.option(
+    "--install-method",
+    help="Set how the package is to be installed",
+)
 @click.pass_obj
 def cmd_add(
     ctx: Context,
@@ -51,6 +56,7 @@ def cmd_add(
     package_root_with_name: str | None,
     branch: str | None,
     disable_updates: bool,
+    install_method: str | None,
 ) -> None:
     pm = ctx.package_manager()
 
@@ -78,12 +84,23 @@ def cmd_add(
     if not dest:
         raise AmbiguousDestinationError
 
+    install_method_enum = InstallMethod.from_string(install_method)
+
+    if (
+        install_method_enum != InstallMethod.COPY or install_method is None
+    ) and sys.platform == "win32":
+        logging.warning(
+            f"Install method {install_method} is not supported on "
+            f"Windows, changing it to 'copy'"
+        )
+
     pkg = PkgConfig(
         name=name,
         url=repository_url,
         package_root=package_root_value,
         updates_disabled=disable_updates,
         branch=branch,
+        install_method=install_method_enum.value,
     )
 
     if not pm.is_package_registered(dest, pkg):

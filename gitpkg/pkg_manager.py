@@ -6,17 +6,19 @@ import logging
 import os
 import re
 import shutil
+import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
 from git import FetchInfo, GitConfigParser, Repo
 
-from gitpkg.config import Config, Destination, PkgConfig
+from gitpkg.config import Config, Destination, InstallMethod, PkgConfig
 from gitpkg.errors import (
     DestinationWithNameAlreadyExistsError,
     DestinationWithPathAlreadyExistsError,
     NameInvalidError,
+    NotSupportedByPlatformError,
     PackageAlreadyInstalledError,
     PackageRootDirNotFoundError,
     PackageUrlChangedError,
@@ -314,9 +316,19 @@ class PkgManager:
         if symlink_exists(install_dir):
             install_dir.unlink()
 
-        install_dir.symlink_to(
-            os.path.relpath(pkg_package_root_dir, install_dir.parent)
-        )
+        match pkg.get_install_method():
+            case InstallMethod.LINK:
+                if sys.platform == "win32":
+                    msg = "Install method 'link' is not supported on Windows!"
+                    raise NotSupportedByPlatformError(msg)
+                install_dir.symlink_to(
+                    os.path.relpath(pkg_package_root_dir, install_dir.parent)
+                )
+            case InstallMethod.COPY:
+                shutil.copytree(pkg_package_root_dir, install_dir)
+            case method:
+                msg = f"Unknown install method {method}"
+                raise ValueError(msg)
 
         logging.debug(f"installed package '{pkg.name}' to {install_dir}")
 

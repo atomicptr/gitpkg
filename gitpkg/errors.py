@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 from gitpkg.config import Destination, PkgConfig
@@ -11,6 +12,10 @@ class GitPkgError(Exception):
             message = self.raw_message
         self.raw_message = message
         super().__init__(f"ERROR: git pkg: {message}")
+
+    @classmethod
+    def create(cls, message: str):
+        return cls(message)
 
 
 class DestinationWithNameAlreadyExistsError(GitPkgError):
@@ -83,3 +88,8 @@ class PackageRootDirNotFoundError(GitPkgError):
 class NameInvalidError(GitPkgError):
     def __init__(self, name: str):
         super().__init__(f"Name '{name}' is not valid!")
+
+
+class NotSupportedByPlatformError(GitPkgError):
+    def __init__(self, msg: str):
+        super().__init__(f"NOT SUPPORTED ON '{sys.platform}': {msg}")

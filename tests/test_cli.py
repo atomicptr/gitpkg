@@ -5,6 +5,12 @@ from pathlib import Path
 
 import pytest
 
+from gitpkg.errors import (
+    AmbiguousDestinationError,
+    PackageAlreadyInstalledError,
+    PackageRootDirNotFoundError,
+)
+
 if sys.version_info < (3, 11):
     import tomli as tomllib  # pragma: no cover
 else:
@@ -12,7 +18,7 @@ else:
 
 from _pytest.capture import CaptureFixture
 
-from gitpkg.cli import CLI
+from gitpkg.cli import run_cli as run_cli_raw
 from gitpkg.config import Config
 from tests.git_composer import GitComposer, checksum
 
@@ -23,7 +29,9 @@ def assert_toml_dest_exists(toml: Path, name: str) -> None:
     data = tomllib.loads(toml.read_text())
     assert "destinations" in data
     assert len(data["destinations"]) > 0
-    assert len(list(filter(lambda d: d["name"] == name, data["destinations"]))) > 0
+    assert (
+        len(list(filter(lambda d: d["name"] == name, data["destinations"]))) > 0
+    )
 
 
 def assert_toml_pkg_exists(toml: Path, dest: str, pkg: str) -> None:
@@ -32,7 +40,18 @@ def assert_toml_pkg_exists(toml: Path, dest: str, pkg: str) -> None:
     data = tomllib.loads(toml.read_text())
     assert "packages" in data
     assert dest in data["packages"]
-    assert len(list(filter(lambda p: p["name"] == pkg, data["packages"][dest]))) > 0
+    assert (
+        len(list(filter(lambda p: p["name"] == pkg, data["packages"][dest])))
+        > 0
+    )
+
+
+def run_cli(args: list[str]):
+    args = list(map(str, args))
+    with pytest.raises(SystemExit) as err:
+        run_cli_raw(args)
+    if err.value.code != 0:
+        raise err
 
 
 class TestCLI:
@@ -51,12 +70,12 @@ class TestCLI:
         vendor_dir = repo.path() / "vendor"
         vendor_dir.mkdir(parents=True, exist_ok=True)
 
-        CLI().run([__file__, "dest:list"])
+        run_cli(["dest", "list"])
 
         captured = capsys.readouterr()
         assert "No destinations" in captured.out
 
-        CLI().run([__file__, "dest:register", vendor_dir.name])
+        run_cli(["dest", "add", vendor_dir])
 
         toml_path = vendor_dir / ".." / ".gitpkg.toml"
 
@@ -64,7 +83,7 @@ class TestCLI:
 
         assert_toml_dest_exists(toml_path, "vendor")
 
-        CLI().run([__file__, "dest:list"])
+        run_cli(["dest", "list"])
         captured = capsys.readouterr()
 
         assert "vendor" in captured.out
@@ -79,7 +98,7 @@ class TestCLI:
         vendor_dir = repo.path() / "libs"
         vendor_dir.mkdir(parents=True, exist_ok=True)
         os.chdir(vendor_dir)
-        CLI().run([__file__, "add", str(remote_repo.path().absolute())])
+        run_cli(["add", str(remote_repo.path().absolute())])
 
         toml_path = vendor_dir / ".." / ".gitpkg.toml"
 
@@ -91,7 +110,7 @@ class TestCLI:
         assert (vendor_dir / "remote_repo").exists()
 
         # must be relative path, regression  test for #8
-        remote_repo_install_link = Path(os.readlink(vendor_dir / "remote_repo"))
+        remote_repo_install_link = Path(vendor_dir / "remote_repo").readlink()
         assert not remote_repo_install_link.is_absolute()
         assert (vendor_dir / remote_repo_install_link).exists()
 
@@ -106,11 +125,11 @@ class TestCLI:
 
         libs_dir = repo.path() / "libs"
         libs_dir.mkdir(parents=True, exist_ok=True)
-        CLI().run([__file__, "dest:register", "libs"])
+        run_cli(["dest", "add", "libs"])
 
         vendor_dir = repo.path() / "vendor"
         vendor_dir.mkdir(parents=True, exist_ok=True)
-        CLI().run([__file__, "dest:register", "vendor"])
+        run_cli(["dest", "add", "vendor"])
 
         toml_path = repo.path() / ".gitpkg.toml"
 
@@ -118,21 +137,18 @@ class TestCLI:
         assert_toml_dest_exists(toml_path, "vendor")
 
         # test with no dest should raise error
-        with pytest.raises(SystemExit) as err:
-            CLI().run([__file__, "add", str(remote_repo.path().absolute())])
-        assert err.type == SystemExit
-        assert err.value.code == 1
+        with pytest.raises(AmbiguousDestinationError) as err:
+            run_cli(["add", str(remote_repo.path().absolute())])
 
         # installing at both places should work
-        CLI().run(
-            [__file__, "add", str(remote_repo.path().absolute()), "--dest-name", "libs"]
+        run_cli(
+            ["add", str(remote_repo.path().absolute()), "--dest-name", "libs"]
         )
         # repo should be there
         assert (libs_dir / "remote_repo").exists()
 
-        CLI().run(
+        run_cli(
             [
-                __file__,
                 "add",
                 str(remote_repo.path().absolute()),
                 "--dest-name",
@@ -149,31 +165,25 @@ class TestCLI:
         assert_toml_pkg_exists(toml_path, "vendor", "remote_repo")
 
         # installing same package again should cause error
-        with pytest.raises(SystemExit) as err:
-            CLI().run(
+        with pytest.raises(PackageAlreadyInstalledError):
+            run_cli(
                 [
-                    __file__,
                     "add",
                     str(remote_repo.path().absolute()),
                     "--dest-name",
                     "libs",
                 ]
             )
-        assert err.type == SystemExit
-        assert err.value.code == 1
 
-        with pytest.raises(SystemExit) as err:
-            CLI().run(
+        with pytest.raises(PackageAlreadyInstalledError):
+            run_cli(
                 [
-                    __file__,
                     "add",
                     str(remote_repo.path().absolute()),
                     "--dest-name",
                     "vendor",
                 ]
             )
-        assert err.type == SystemExit
-        assert err.value.code == 1
         assert not repo.is_corrupted()
 
     def test_add_package_with_one_destination(self):
@@ -186,11 +196,11 @@ class TestCLI:
 
         vendor_dir = repo.path() / "libs"
         vendor_dir.mkdir(parents=True, exist_ok=True)
-        CLI().run([__file__, "dest:register", "libs"])
+        run_cli(["dest", "add", "libs"])
 
         toml_path = repo.path() / ".gitpkg.toml"
 
-        CLI().run([__file__, "add", str(remote_repo.path().absolute()), "-r", "subdir"])
+        run_cli(["add", str(remote_repo.path().absolute()), "-r", "subdir"])
 
         assert_toml_dest_exists(toml_path, "libs")
         assert_toml_pkg_exists(toml_path, "libs", "remote_repo")
@@ -200,18 +210,15 @@ class TestCLI:
         assert not (repo.path() / "libs" / "remote_repo" / "404.txt").exists()
 
         # try to install from unknown dest
-        with pytest.raises(SystemExit) as err:
-            CLI().run(
+        with pytest.raises(AmbiguousDestinationError):
+            run_cli(
                 [
-                    __file__,
                     "add",
                     str(remote_repo.path().absolute()),
                     "--dest-name",
                     "unknown",
                 ]
             )
-        assert err.type == SystemExit
-        assert err.value.code == 1
         assert not repo.is_corrupted()
 
     def test_add_with_non_existent_package_root(self):
@@ -223,12 +230,10 @@ class TestCLI:
         vendor_dir.mkdir(parents=True, exist_ok=True)
         os.chdir(vendor_dir)
 
-        with pytest.raises(SystemExit) as err:
-            CLI().run(
-                [__file__, "add", str(remote_repo.path().absolute()), "-rn", "subdir"]
+        with pytest.raises(PackageRootDirNotFoundError):
+            run_cli(
+                ["add", str(remote_repo.path().absolute()), "-rn", "subdir"]
             )
-        assert err.type == SystemExit
-        assert err.value.code == 1
 
         dep_path = vendor_dir / "subdir"
 
@@ -244,7 +249,7 @@ class TestCLI:
         remote_repo = repo.path().parent / "fake_remote_repo"
 
         with pytest.raises(Exception) as err:
-            CLI().run([__file__, "add", str(remote_repo.absolute()), "-rn", "subdir"])
+            run_cli(["add", str(remote_repo.absolute()), "-rn", "subdir"])
 
         dep_path = vendor_dir / "subdir"
 
@@ -263,21 +268,11 @@ class TestCLI:
         libs_dir = repo.path() / "libs"
         libs_dir.mkdir(parents=True, exist_ok=True)
         os.chdir(libs_dir)
-        CLI().run(
-            [__file__, "add", str(remote_repo.path().absolute()), "-rn", "root_a"]
-        )
-        CLI().run(
-            [__file__, "add", str(remote_repo.path().absolute()), "-rn", "root_b"]
-        )
-        CLI().run(
-            [__file__, "add", str(remote_repo.path().absolute()), "-rn", "root_c"]
-        )
-        CLI().run(
-            [__file__, "add", str(remote_repo.path().absolute()), "-rn", "root_d"]
-        )
-        CLI().run(
-            [__file__, "add", str(remote_repo.path().absolute()), "-rn", "root_e"]
-        )
+        run_cli(["add", str(remote_repo.path().absolute()), "-rn", "root_a"])
+        run_cli(["add", str(remote_repo.path().absolute()), "-rn", "root_b"])
+        run_cli(["add", str(remote_repo.path().absolute()), "-rn", "root_c"])
+        run_cli(["add", str(remote_repo.path().absolute()), "-rn", "root_d"])
+        run_cli(["add", str(remote_repo.path().absolute()), "-rn", "root_e"])
 
         toml_path = libs_dir / ".." / ".gitpkg.toml"
 
@@ -312,17 +307,17 @@ class TestCLI:
         os.chdir(repo.path())
         vendor_dir = repo.path() / "libs"
         vendor_dir.mkdir(parents=True, exist_ok=True)
-        CLI().run([__file__, "dest:register", "libs"])
+        run_cli(["dest", "add", "libs"])
 
-        CLI().run([__file__, "list"])
+        run_cli(["list"])
         captured = capsys.readouterr()
 
         assert "No packages" in captured.out
 
         for dep in deps:
-            CLI().run([__file__, "add", str(dep.path().absolute())])
+            run_cli(["add", str(dep.path().absolute())])
 
-        CLI().run([__file__, "list"])
+        run_cli(["list"])
 
         captured = capsys.readouterr()
 
@@ -338,8 +333,8 @@ class TestCLI:
         vendor_dir = repo.path() / "libs"
         vendor_dir.mkdir(parents=True, exist_ok=True)
         os.chdir(vendor_dir)
-        CLI().run([__file__, "add", str(dep_a.path().absolute())])
-        CLI().run([__file__, "add", str(dep_b.path().absolute())])
+        run_cli(["add", str(dep_a.path().absolute())])
+        run_cli(["add", str(dep_b.path().absolute())])
 
         toml_path = repo.path() / ".gitpkg.toml"
 
@@ -347,14 +342,16 @@ class TestCLI:
         assert_toml_pkg_exists(toml_path, "libs", "depA")
         assert_toml_pkg_exists(toml_path, "libs", "depB")
 
-        CLI().run([__file__, "remove", "depA"])
+        run_cli(["remove", "depA"])
 
         assert_toml_pkg_exists(toml_path, "libs", "depB")
 
         data = tomllib.loads(toml_path.read_text())
         packages = data.get("packages", {}).get("libs", [])
 
-        assert len(list(filter(lambda pkg: pkg["name"] == "depA", packages))) == 0
+        assert (
+            len(list(filter(lambda pkg: pkg["name"] == "depA", packages))) == 0
+        )
         assert not repo.is_corrupted()
 
     def test_remove_with_multiple_dests(self):
@@ -369,15 +366,11 @@ class TestCLI:
         vendor_dir2 = repo.path() / "lib2"
         vendor_dir2.mkdir(parents=True, exist_ok=True)
 
-        CLI().run([__file__, "dest:register", "libs"])
-        CLI().run([__file__, "dest:register", "libs2"])
+        run_cli(["dest", "add", "libs"])
+        run_cli(["dest", "add", "libs2"])
 
-        CLI().run(
-            [__file__, "add", str(dep_a.path().absolute()), "--dest-name", "libs"]
-        )
-        CLI().run(
-            [__file__, "add", str(dep_b.path().absolute()), "--dest-name", "libs2"]
-        )
+        run_cli(["add", str(dep_a.path().absolute()), "--dest-name", "libs"])
+        run_cli(["add", str(dep_b.path().absolute()), "--dest-name", "libs2"])
 
         toml_path = repo.path() / ".gitpkg.toml"
 
@@ -387,7 +380,7 @@ class TestCLI:
         assert_toml_pkg_exists(toml_path, "libs", "depA")
         assert_toml_pkg_exists(toml_path, "libs2", "depB")
 
-        CLI().run([__file__, "remove", "depA"])
+        run_cli(["remove", "depA"])
 
         assert_toml_pkg_exists(toml_path, "libs2", "depB")
 
@@ -428,15 +421,11 @@ class TestCLI:
         vendor_dir2 = repo.path() / "lib2"
         vendor_dir2.mkdir(parents=True, exist_ok=True)
 
-        CLI().run([__file__, "dest:register", "libs"])
-        CLI().run([__file__, "dest:register", "libs2"])
+        run_cli(["dest", "add", "libs"])
+        run_cli(["dest", "add", "libs2"])
 
-        CLI().run(
-            [__file__, "add", str(the_one.path().absolute()), "--dest-name", "libs"]
-        )
-        CLI().run(
-            [__file__, "add", str(the_one.path().absolute()), "--dest-name", "libs2"]
-        )
+        run_cli(["add", str(the_one.path().absolute()), "--dest-name", "libs"])
+        run_cli(["add", str(the_one.path().absolute()), "--dest-name", "libs2"])
 
         toml_path = repo.path() / ".gitpkg.toml"
 
@@ -446,12 +435,10 @@ class TestCLI:
         assert_toml_pkg_exists(toml_path, "libs", "the_one")
         assert_toml_pkg_exists(toml_path, "libs2", "the_one")
 
-        with pytest.raises(SystemExit) as err:
-            CLI().run([__file__, "remove", "the_one"])
-        assert err.type == SystemExit
-        assert err.value.code == 1
+        with pytest.raises(AmbiguousDestinationError):
+            run_cli(["remove", "the_one"])
 
-        CLI().run([__file__, "remove", "libs2/the_one"])
+        run_cli(["remove", "libs2/the_one"])
 
         assert_toml_pkg_exists(toml_path, "libs", "the_one")
 
@@ -482,8 +469,8 @@ class TestCLI:
         vendor_dir.mkdir(parents=True, exist_ok=True)
         os.chdir(vendor_dir)
 
-        CLI().run([__file__, "add", str(dep_a.path().absolute())])
-        CLI().run([__file__, "add", str(dep_b.path().absolute())])
+        run_cli(["add", str(dep_a.path().absolute())])
+        run_cli(["add", str(dep_b.path().absolute())])
 
         os.chdir(repo.path())
 
@@ -507,7 +494,7 @@ class TestCLI:
 
         toml_file.write_text(config.to_toml_string())
 
-        CLI().run([__file__, "install"])
+        run_cli(["install"])
 
         assert not (repo.path() / "libs" / "depA" / "test.txt").exists()
         assert (repo.path() / "libs" / "depA" / "swag.txt").exists()
@@ -525,8 +512,8 @@ class TestCLI:
         vendor_dir.mkdir(parents=True, exist_ok=True)
         os.chdir(vendor_dir)
 
-        CLI().run([__file__, "add", str(dep_a.path().absolute())])
-        CLI().run([__file__, "add", str(dep_b.path().absolute())])
+        run_cli(["add", str(dep_a.path().absolute())])
+        run_cli(["add", str(dep_b.path().absolute())])
 
         os.chdir(repo.path())
 
@@ -539,7 +526,7 @@ class TestCLI:
         shutil.rmtree(gitpkgs)
         gitmodules.unlink()
 
-        CLI().run([__file__, "install"])
+        run_cli(["install"])
 
         assert gitmodules.exists()
         assert gitpkgs.exists()
@@ -557,8 +544,8 @@ class TestCLI:
         vendor_dir.mkdir(parents=True, exist_ok=True)
         os.chdir(vendor_dir)
 
-        CLI().run([__file__, "add", str(dep_a.path().absolute())])
-        CLI().run([__file__, "add", str(dep_b.path().absolute())])
+        run_cli(["add", str(dep_a.path().absolute())])
+        run_cli(["add", str(dep_b.path().absolute())])
 
         os.chdir(repo.path())
 
@@ -569,7 +556,7 @@ class TestCLI:
         shutil.rmtree(internal_dir)
         internal_dir.mkdir()
 
-        CLI().run([__file__, "install"])
+        run_cli(["install"])
 
         assert gitmodules.exists()
         assert gitpkgs.exists()
@@ -587,8 +574,8 @@ class TestCLI:
         vendor_dir.mkdir(parents=True, exist_ok=True)
         os.chdir(vendor_dir)
 
-        CLI().run([__file__, "add", str(dep_a.path().absolute())])
-        CLI().run([__file__, "add", str(dep_b.path().absolute())])
+        run_cli(["add", str(dep_a.path().absolute())])
+        run_cli(["add", str(dep_b.path().absolute())])
 
         os.chdir(repo.path())
 
@@ -598,7 +585,7 @@ class TestCLI:
 
         gitmodules.unlink()
 
-        CLI().run([__file__, "install"])
+        run_cli(["install"])
 
         assert gitmodules.exists()
         assert gitpkgs.exists()
@@ -616,8 +603,8 @@ class TestCLI:
         vendor_dir.mkdir(parents=True, exist_ok=True)
         os.chdir(vendor_dir)
 
-        CLI().run([__file__, "add", str(dep_a.path().absolute())])
-        CLI().run([__file__, "add", str(dep_b.path().absolute())])
+        run_cli(["add", str(dep_a.path().absolute())])
+        run_cli(["add", str(dep_b.path().absolute())])
 
         os.chdir(repo.path())
 
@@ -626,7 +613,7 @@ class TestCLI:
 
         shutil.rmtree(gitpkgs)
 
-        CLI().run([__file__, "install"])
+        run_cli(["install"])
 
         assert gitmodules.exists()
         assert gitpkgs.exists()
@@ -644,8 +631,8 @@ class TestCLI:
         vendor_dir.mkdir(parents=True, exist_ok=True)
         os.chdir(vendor_dir)
 
-        CLI().run([__file__, "add", str(dep_a.path().absolute())])
-        CLI().run([__file__, "add", str(dep_b.path().absolute())])
+        run_cli(["add", str(dep_a.path().absolute())])
+        run_cli(["add", str(dep_b.path().absolute())])
 
         os.chdir(repo.path())
 
@@ -655,7 +642,7 @@ class TestCLI:
 
         assert not updated_file.exists()
 
-        CLI().run([__file__, "update"])
+        run_cli(["update"])
 
         assert updated_file.exists()
 
@@ -670,8 +657,8 @@ class TestCLI:
         vendor_dir.mkdir(parents=True, exist_ok=True)
         os.chdir(vendor_dir)
 
-        CLI().run([__file__, "add", str(dep_a.path().absolute())])
-        CLI().run([__file__, "add", str(dep_b.path().absolute())])
+        run_cli(["add", str(dep_a.path().absolute())])
+        run_cli(["add", str(dep_b.path().absolute())])
 
         os.chdir(repo.path())
 
@@ -688,17 +675,17 @@ class TestCLI:
 
         assert checksum(new_file) == new_file_after_change
 
-        CLI().run([__file__, "update", "depA"])
+        run_cli(["update", "depA"])
 
         assert checksum(new_file) == new_file_after_change
 
-        CLI().run([__file__, "update", "depA", "--force"])
+        run_cli(["update", "depA", "--force"])
 
         assert checksum(new_file) == new_file_before_change
 
         assert untracked_file.exists()
 
-        CLI().run([__file__, "update", "--force"])
+        run_cli(["update", "--force"])
 
         assert not untracked_file.exists()
 
@@ -712,8 +699,8 @@ class TestCLI:
         vendor_dir.mkdir(parents=True, exist_ok=True)
         os.chdir(vendor_dir)
 
-        CLI().run([__file__, "add", str(dep_a.path().absolute()), "--disable-updates"])
-        CLI().run([__file__, "add", str(dep_b.path().absolute())])
+        run_cli(["add", str(dep_a.path().absolute()), "--disable-updates"])
+        run_cli(["add", str(dep_b.path().absolute())])
 
         os.chdir(repo.path())
 
@@ -730,7 +717,7 @@ class TestCLI:
         assert not dep_a_updated_file.exists()
         assert not dep_b_updated_file.exists()
 
-        CLI().run([__file__, "update"])
+        run_cli(["update"])
 
         assert not dep_a_updated_file.exists()
         assert dep_b_updated_file.exists()

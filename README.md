@@ -19,7 +19,7 @@ you can have multiple of these.
 Install a destination by using:
 
 ```bash
-$ git pkg dest:register addons
+$ git pkg dest add addons
 ```
 
 The directory does not have to exist, it will be automatically generated.

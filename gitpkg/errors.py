@@ -62,7 +62,9 @@ class UnknownPackageError(GitPkgError):
 
 
 class PackageUrlChangedError(GitPkgError):
-    def __init__(self, destination: Destination, ref_pkg: PkgConfig, pkg: PkgConfig):
+    def __init__(
+        self, destination: Destination, ref_pkg: PkgConfig, pkg: PkgConfig
+    ):
         super().__init__(
             f"package '{pkg.name}' (dest: '{destination.name}') changed url "
             f"from '{ref_pkg.url}' to '{pkg.url}', please uninstall the "

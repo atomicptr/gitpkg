@@ -1,8 +1,5 @@
-import os
-
-from gitpkg.cli import CLI
+from gitpkg.cli import run_cli
 
 
 def main():
-    cli = CLI(enable_debug_mode=os.getenv("GITPKG_DEBUG") is not None)
-    cli.run()
+    run_cli()

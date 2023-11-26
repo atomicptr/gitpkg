@@ -49,7 +49,9 @@ class PkgManager:
                 return dest
         return None
 
-    def find_packages_by_destination(self, destination: Destination) -> list[PkgConfig]:
+    def find_packages_by_destination(
+        self, destination: Destination
+    ) -> list[PkgConfig]:
         """Find all packages associated with given destination"""
         if destination.name not in self._config.packages:
             return []
@@ -125,7 +127,8 @@ class PkgManager:
         self._write_config()
 
     def remove_package(self, destination: Destination, pkg: PkgConfig) -> None:
-        """Remove package from destination in config (does not uninstall package)"""
+        """Remove package from destination in config
+        (does not uninstall package)"""
 
         if not self.is_package_registered(destination, pkg):
             raise UnknownPackageError(destination, pkg)
@@ -162,7 +165,9 @@ class PkgManager:
             and self._gitmodules_internal_location(destination, pkg).exists()
         )
 
-    def find_package(self, destination: Destination, pkg_name: str) -> PkgConfig | None:
+    def find_package(
+        self, destination: Destination, pkg_name: str
+    ) -> PkgConfig | None:
         """Find a package in a destination by name"""
         if destination.name not in self._config.packages:
             return None
@@ -174,7 +179,8 @@ class PkgManager:
     def has_package_config_been_changed(
         self, destination: Destination, pkg: PkgConfig
     ) -> bool:
-        """Is the given package configuration different from what's installed?"""
+        """Is the given package configuration different from
+        what's installed?"""
         ref_pkg = self.find_package(destination, pkg.name)
         if ref_pkg is None:
             raise UnknownPackageError(destination, pkg)
@@ -193,7 +199,9 @@ class PkgManager:
 
         return self._has_repo_changed(destination, pkg)
 
-    def _has_repo_changed(self, destination: Destination, pkg: PkgConfig) -> bool:
+    def _has_repo_changed(
+        self, destination: Destination, pkg: PkgConfig
+    ) -> bool:
         """Has the physical repository changed?"""
         # no changes in config found, next test against the actual repo...
         if pkg.branch:
@@ -208,16 +216,23 @@ class PkgManager:
 
         pkg_path = self.package_install_location(destination, pkg)
 
-        if pkg.package_root and symlink_exists(pkg_path) and pkg_path.is_symlink():
+        if (
+            pkg.package_root
+            and symlink_exists(pkg_path)
+            and pkg_path.is_symlink()
+        ):
             source_path = (
-                self._get_pkg_submodule_location(destination, pkg) / pkg.package_root
+                self._get_pkg_submodule_location(destination, pkg)
+                / pkg.package_root
             )
-            target_path = Path(os.readlink(pkg_path))
+            target_path = pkg_path.readlink()
 
             # this path should be relative, so we apply it on top of the install
             # location
             if not target_path.is_absolute():
-                vendor_dir = self.package_install_location(destination, pkg).parent
+                vendor_dir = self.package_install_location(
+                    destination, pkg
+                ).parent
                 target_path = vendor_dir / target_path
 
             # link target does not exist? Something changed!
@@ -225,7 +240,8 @@ class PkgManager:
                 return True
 
             logging.debug(
-                f"package root: Source is {source_path}, " f"Target is: {target_path}"
+                f"package root: Source is {source_path}, "
+                f"Target is: {target_path}"
             )
             return not source_path.samefile(target_path)
 
@@ -304,7 +320,9 @@ class PkgManager:
 
         logging.debug(f"installed package '{pkg.name}' to {install_dir}")
 
-    def uninstall_package(self, destination: Destination, pkg: PkgConfig) -> None:
+    def uninstall_package(
+        self, destination: Destination, pkg: PkgConfig
+    ) -> None:
         """Uninstalls the package from disk"""
 
         repo_used_by_other_pkg = self._repo_used_by_other_pkg(destination, pkg)
@@ -328,7 +346,8 @@ class PkgManager:
             self.remove_package(destination, pkg)
 
         logging.debug(
-            f"uninstalled package '{pkg.name}' from dest: " f"'{destination.name}'"
+            f"uninstalled package '{pkg.name}' from dest: "
+            f"'{destination.name}'"
         )
 
     def update_package(
@@ -407,7 +426,7 @@ class PkgManager:
             for dest_dir in dest_path.glob("*"):
                 if not dest_dir.is_symlink():
                     continue
-                target_dir = (dest_dir.parent / os.readlink(dest_dir)).resolve()
+                target_dir = (dest_dir.parent / dest_dir.readlink()).resolve()
                 if not symlink_exists(target_dir):
                     logging.debug(f"CLEAN: remove symlink {dest_dir}")
                     dest_dir.unlink()
@@ -450,7 +469,10 @@ class PkgManager:
                 pkg_ident = matches[0]
 
                 internal_dir = (
-                    self.project_root_directory() / ".git" / "modules" / pkg_ident
+                    self.project_root_directory()
+                    / ".git"
+                    / "modules"
+                    / pkg_ident
                 )
 
                 if internal_dir.exists():
@@ -460,7 +482,9 @@ class PkgManager:
                 cp.remove_section(section)
             cp.write()
 
-    def _repo_used_by_other_pkg(self, dest: Destination, pkg: PkgConfig) -> bool:
+    def _repo_used_by_other_pkg(
+        self, dest: Destination, pkg: PkgConfig
+    ) -> bool:
         package_ident = self.package_identifier(dest, pkg)
 
         for ref_dest in self.destinations():
@@ -494,7 +518,9 @@ class PkgManager:
             if len(text.strip()) == 0:
                 gitmodules_file.unlink()
 
-    def _update_gitmodules_file(self, destination: Destination, pkg: PkgConfig) -> None:
+    def _update_gitmodules_file(
+        self, destination: Destination, pkg: PkgConfig
+    ) -> None:
         pkg_ident = self.package_identifier(destination, pkg)
         gitmodules_file = self.project_root_directory() / ".gitmodules"
         section = f'submodule "{pkg_ident}"'
@@ -536,7 +562,9 @@ class PkgManager:
         pkg: PkgConfig,
     ) -> Path:
         """Submodule location of package"""
-        return self._gitpkgs_location() / self.package_identifier(destination, pkg)
+        return self._gitpkgs_location() / self.package_identifier(
+            destination, pkg
+        )
 
     def package_identifier(self, _dest: Destination, pkg: PkgConfig) -> str:
         """Unique package identifier"""
@@ -569,9 +597,25 @@ class PkgManager:
         )
 
     @staticmethod
-    def from_environment():
+    def from_environment() -> PkgManager:
         """Create a package manager for the nearest git project"""
         repo = Repo(Path.cwd(), search_parent_directories=True)
+        config = Config()
+
+        config_file = PkgManager._project_root_directory(repo) / _CONFIG_FILE
+
+        if config_file.exists():
+            config = Config.from_path(config_file)
+
+        return PkgManager(repo, config)
+
+    @staticmethod
+    def from_path(path: Path) -> PkgManager:
+        """Create a package manager for the specified path"""
+        if not path.exists():
+            raise FileNotFoundError
+
+        repo = Repo(path, search_parent_directories=False)
         config = Config()
 
         config_file = PkgManager._project_root_directory(repo) / _CONFIG_FILE

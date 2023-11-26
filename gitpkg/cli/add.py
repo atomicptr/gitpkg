@@ -11,8 +11,12 @@ from gitpkg.cli.helpers import (
 )
 from gitpkg.cli.root import Context, root
 from gitpkg.config import InstallMethod, PkgConfig
-from gitpkg.errors import AmbiguousDestinationError, PackageRootDirNotFoundError
-from gitpkg.utils import extract_repository_name_from_url
+from gitpkg.errors import (
+    AmbiguousDestinationError,
+    GitPkgError,
+    PackageRootDirNotFoundError,
+)
+from gitpkg.utils import extract_repository_name_from_url, parse_repository_url
 
 
 @root.command("add", help="Add and install a package to a destination")
@@ -59,6 +63,14 @@ def cmd_add(
     install_method: str | None,
 ) -> None:
     pm = ctx.package_manager()
+
+    parse_url_result = parse_repository_url(repository_url)
+
+    if not parse_url_result:
+        msg = f"URL: {repository_url} does not seem to be a valid git url"
+        raise GitPkgError(msg)
+
+    repository_url, _ = parse_url_result
 
     package_root_value = "."
 

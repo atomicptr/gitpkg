@@ -29,7 +29,6 @@ from gitpkg.errors import (
 from gitpkg.utils import (
     does_actually_exist,
     extract_repository_name_from_url,
-    fix_permissions,
     is_symlink,
     safe_dir_delete,
 )
@@ -323,13 +322,13 @@ class PkgManager:
         safe_dir_delete(install_dir)
 
         if not repo_used_by_other_pkg and submodule_location.exists():
-            shutil.rmtree(submodule_location, onerror=fix_permissions)
+            safe_dir_delete(submodule_location)
 
         gitmodules_file = self.project_root_directory() / ".gitmodules"
 
         internal_dir = self._gitmodules_internal_location(destination, pkg)
         if internal_dir.exists() and not gitmodules_file.exists():
-            shutil.rmtree(internal_dir, onerror=fix_permissions)
+            safe_dir_delete(internal_dir)
 
         if not submodule_location.exists():
             if internal_dir.exists():
@@ -338,7 +337,7 @@ class PkgManager:
                 gitdir = submodule_location / ".git"
 
                 if gitdir.exists():
-                    shutil.rmtree(gitdir, onerror=fix_permissions)
+                    safe_dir_delete(gitdir)
 
                 rel_path = os.path.relpath(internal_dir, submodule_location)
                 gitdir.write_text(f"gitdir: {rel_path}")
@@ -384,7 +383,7 @@ class PkgManager:
 
         internal_dir = self._gitmodules_internal_location(destination, pkg)
         if not repo_used_by_other_pkg and internal_dir.exists():
-            shutil.rmtree(internal_dir, onerror=fix_permissions)
+            safe_dir_delete(internal_dir)
 
         install_dir = self.package_install_location(destination, pkg)
         if does_actually_exist(install_dir):
@@ -392,7 +391,7 @@ class PkgManager:
 
         submodule_location = self._get_pkg_submodule_location(destination, pkg)
         if not repo_used_by_other_pkg and submodule_location.exists():
-            shutil.rmtree(submodule_location, onerror=fix_permissions)
+            safe_dir_delete(submodule_location)
 
         if not repo_used_by_other_pkg:
             self._remove_pkg_from_gitmodules(destination, pkg)
@@ -478,7 +477,7 @@ class PkgManager:
             if dir.name in packages:
                 continue
             logging.debug(f"CLEAN: remove unused gitpkg {dir}")
-            shutil.rmtree(dir, onerror=fix_permissions)
+            safe_dir_delete(dir)
 
         # remove links that point nowhere from dest dirs
         for dest in self.destinations():
@@ -538,7 +537,7 @@ class PkgManager:
 
                 if internal_dir.exists():
                     logging.debug(f"CLEAN: remove internal dir {internal_dir}")
-                    shutil.rmtree(internal_dir, onerror=fix_permissions)
+                    safe_dir_delete(internal_dir)
 
                 cp.remove_section(section)
             cp.write()

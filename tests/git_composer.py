@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import hashlib
 import random
-import shutil
 import tempfile
 from hashlib import sha3_256
 from pathlib import Path
 from typing import ClassVar
 
 from git import Repo
+
+from gitpkg.utils import safe_dir_delete
 
 
 class GitComposer:
@@ -42,7 +43,7 @@ class GitComposer:
     @staticmethod
     def cleanup():
         for directory in GitComposer.to_be_deleted:
-            shutil.rmtree(directory)
+            safe_dir_delete(directory)
 
     def __str__(self) -> str:
         return f"GitComposer ({self.temp_dir})"
@@ -55,7 +56,6 @@ class GitComposerRepo:
     def __init__(self, repo: Repo, path: Path):
         self._repo = repo
         self._path = path
-        self._repo.close()
 
     def path(self) -> Path:
         return self._path
@@ -74,7 +74,6 @@ class GitComposerRepo:
             message = f"add {filename}"
 
         self._repo.index.commit(message)
-        self._repo.close()
 
     def change_file(self, filename: str):
         filepath = self._path / filename
@@ -87,7 +86,6 @@ class GitComposerRepo:
 
         self._repo.index.add([str(filepath)])
         self._repo.index.commit(f"update {filename}")
-        self._repo.close()
 
     def file_hash(self, filename: str) -> str:
         filepath = self._path / filename

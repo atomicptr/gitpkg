@@ -1,10 +1,7 @@
-import logging
 import re
-import shutil
-import stat
-import sys
-from collections.abc import Callable
 from pathlib import Path
+
+import git
 
 _REPOSITORY_PARSE_REGEX = [
     r"ssh://(?P<domain>.+)/(?P<owner>.+)/(?P<repo>.+).git",
@@ -52,26 +49,4 @@ def safe_dir_delete(path: Path) -> None:
         path.unlink()
         return
 
-    shutil.rmtree(path, onerror=fix_permissions)
-
-
-def fix_permissions(
-    redo_func: Callable[[str], None], path: str, err: tuple[Exception, any, any]
-) -> None:
-    """This function aims to make readonly files deletable on windows using
-    the shutil.rmtree onerror functions"""
-    p = Path(path)
-    exception = err[1]
-    logging.warning(f"Something went wrong with {p.absolute()}: {exception}")
-
-    if sys.platform != "win32":
-        return
-
-    if isinstance(exception, PermissionError):
-        logging.debug(f"Something went wrong with {p.absolute()}: {exception}")
-
-        match exception.errno:
-            # permission denied due to read-only file, add write permission
-            case 13:
-                p.chmod(stat.S_IWRITE)
-                redo_func(path)
+    git.rmtree(path)

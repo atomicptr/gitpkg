@@ -105,6 +105,7 @@ def cmd_add(
             f"Install method {install_method} is not supported on "
             f"Windows, changing it to 'copy'"
         )
+        install_method_enum = InstallMethod.COPY
 
     pkg = PkgConfig(
         name=name,

@@ -3,6 +3,7 @@ import re
 import shutil
 import stat
 import sys
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -56,13 +57,27 @@ def safe_dir_delete(path: Path) -> None:
 
 
 def fix_permissions(
-    redo_func: Callable[[str], None], path: str, err: any
+    redo_func: Callable[[str], None], path: str, err: tuple[Exception, any, any]
 ) -> None:
     """This function aims to make readonly files deletable on windows using
     the shutil.rmtree onerror functions"""
+    p = Path(path)
+    exception = err[1]
+    logging.debug(f"Something went wrong with {p.absolute()}: {exception}")
+
     if sys.platform != "win32":
         return
-    p = Path(path)
-    logging.debug(f"Something went wrong with {p.absolute()}: {err}")
-    p.chmod(stat.S_IWRITE)
-    redo_func(path)
+
+    if isinstance(exception, PermissionError):
+        logging.debug(f"Something went wrong with {p.absolute()}: {exception}")
+
+        match exception.errno:
+            # permission denied due to read-only file, add write permission
+            case 13:
+                p.chmod(stat.S_IWRITE)
+                redo_func(path)
+            # ...due to file being in use, rename it and sleep some
+            case 32:
+                time.sleep(1)
+                p.rename(p)
+                redo_func(path)

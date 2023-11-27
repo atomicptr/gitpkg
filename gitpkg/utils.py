@@ -6,6 +6,7 @@ import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
+from uuid import uuid4
 
 _REPOSITORY_PARSE_REGEX = [
     r"ssh://(?P<domain>.+)/(?P<owner>.+)/(?P<repo>.+).git",
@@ -63,7 +64,7 @@ def fix_permissions(
     the shutil.rmtree onerror functions"""
     p = Path(path)
     exception = err[1]
-    logging.debug(f"Something went wrong with {p.absolute()}: {exception}")
+    logging.warning(f"Something went wrong with {p.absolute()}: {exception}")
 
     if sys.platform != "win32":
         return
@@ -77,7 +78,10 @@ def fix_permissions(
                 p.chmod(stat.S_IWRITE)
                 redo_func(path)
             # ...due to file being in use, rename it and sleep some
-            case 32:
+            case 5, 32:
                 time.sleep(1)
-                p.rename(p)
-                redo_func(path)
+
+                new_path = p.parent / str(uuid4())
+                p.rename(new_path)
+
+                redo_func(str(new_path))

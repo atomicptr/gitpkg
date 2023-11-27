@@ -3,10 +3,8 @@ import re
 import shutil
 import stat
 import sys
-import time
 from collections.abc import Callable
 from pathlib import Path
-from uuid import uuid4
 
 _REPOSITORY_PARSE_REGEX = [
     r"ssh://(?P<domain>.+)/(?P<owner>.+)/(?P<repo>.+).git",
@@ -77,11 +75,3 @@ def fix_permissions(
             case 13:
                 p.chmod(stat.S_IWRITE)
                 redo_func(path)
-            # ...due to file being in use, rename it and sleep some
-            case 5, 32:
-                time.sleep(1)
-
-                new_path = p.parent / str(uuid4())
-                p.rename(new_path)
-
-                redo_func(str(new_path))

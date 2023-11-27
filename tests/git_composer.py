@@ -55,6 +55,7 @@ class GitComposerRepo:
     def __init__(self, repo: Repo, path: Path):
         self._repo = repo
         self._path = path
+        self._repo.close()
 
     def path(self) -> Path:
         return self._path
@@ -73,6 +74,7 @@ class GitComposerRepo:
             message = f"add {filename}"
 
         self._repo.index.commit(message)
+        self._repo.close()
 
     def change_file(self, filename: str):
         filepath = self._path / filename
@@ -85,6 +87,7 @@ class GitComposerRepo:
 
         self._repo.index.add([str(filepath)])
         self._repo.index.commit(f"update {filename}")
+        self._repo.close()
 
     def file_hash(self, filename: str) -> str:
         filepath = self._path / filename

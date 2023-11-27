@@ -1,6 +1,8 @@
 import re
-import shutil
+import sys
 from pathlib import Path
+
+import git
 
 _REPOSITORY_PARSE_REGEX = [
     r"ssh://(?P<domain>.+)/(?P<owner>.+)/(?P<repo>.+).git",
@@ -48,4 +50,8 @@ def safe_dir_delete(path: Path) -> None:
         path.unlink()
         return
 
-    shutil.rmtree(path)
+    git.rmtree(path)
+
+
+def is_windows() -> bool:
+    return sys.platform == "win32"

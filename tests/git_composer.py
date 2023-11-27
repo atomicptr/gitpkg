@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import hashlib
 import random
-import shutil
 import tempfile
 from hashlib import sha3_256
 from pathlib import Path
 from typing import ClassVar
 
 from git import Repo
+
+from gitpkg.utils import safe_dir_delete
 
 
 class GitComposer:
@@ -42,7 +43,7 @@ class GitComposer:
     @staticmethod
     def cleanup():
         for directory in GitComposer.to_be_deleted:
-            shutil.rmtree(directory)
+            safe_dir_delete(directory)
 
     def __str__(self) -> str:
         return f"GitComposer ({self.temp_dir})"

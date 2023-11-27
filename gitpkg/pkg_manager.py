@@ -6,7 +6,6 @@ import logging
 import os
 import re
 import shutil
-import sys
 from dataclasses import dataclass
 from datetime import datetime
 from filecmp import dircmp
@@ -30,6 +29,7 @@ from gitpkg.utils import (
     does_actually_exist,
     extract_repository_name_from_url,
     is_symlink,
+    is_windows,
     safe_dir_delete,
 )
 
@@ -360,7 +360,7 @@ class PkgManager:
 
         match pkg.get_install_method():
             case InstallMethod.LINK:
-                if sys.platform == "win32":
+                if is_windows():
                     msg = "Install method 'link' is not supported on Windows!"
                     raise NotSupportedByPlatformError(msg)
                 install_dir.symlink_to(

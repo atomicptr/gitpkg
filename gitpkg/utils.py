@@ -1,4 +1,5 @@
 import re
+import sys
 from pathlib import Path
 
 import git
@@ -50,3 +51,7 @@ def safe_dir_delete(path: Path) -> None:
         return
 
     git.rmtree(path)
+
+
+def is_windows() -> bool:
+    return sys.platform == "win32"

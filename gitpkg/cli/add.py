@@ -1,5 +1,4 @@
 import logging
-import sys
 from pathlib import Path
 
 import rich_click as click
@@ -16,7 +15,11 @@ from gitpkg.errors import (
     GitPkgError,
     PackageRootDirNotFoundError,
 )
-from gitpkg.utils import extract_repository_name_from_url, parse_repository_url
+from gitpkg.utils import (
+    extract_repository_name_from_url,
+    is_windows,
+    parse_repository_url,
+)
 
 
 @root.command("add", help="Add and install a package to a destination")
@@ -100,7 +103,7 @@ def cmd_add(
 
     if (
         install_method_enum != InstallMethod.COPY or install_method is None
-    ) and sys.platform == "win32":
+    ) and is_windows():
         logging.warning(
             f"Install method {install_method} is not supported on "
             f"Windows, changing it to 'copy'"

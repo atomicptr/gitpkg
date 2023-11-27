@@ -23,25 +23,27 @@ from gitpkg.config import Config
 from tests.git_composer import GitComposer, checksum
 
 
-def assert_toml_dest_exists(toml: Path, name: str) -> None:
-    assert toml.exists()
+def assert_toml_dest_exists(toml: Path | dict, name: str) -> None:
+    if isinstance(toml, Path):
+        assert toml.exists()
+        toml = tomllib.loads(toml.read_text())
 
-    data = tomllib.loads(toml.read_text())
-    assert "destinations" in data
-    assert len(data["destinations"]) > 0
+    assert "destinations" in toml
+    assert len(toml["destinations"]) > 0
     assert (
-        len(list(filter(lambda d: d["name"] == name, data["destinations"]))) > 0
+        len(list(filter(lambda d: d["name"] == name, toml["destinations"]))) > 0
     )
 
 
-def assert_toml_pkg_exists(toml: Path, dest: str, pkg: str) -> None:
-    assert toml.exists()
+def assert_toml_pkg_exists(toml: Path | dict, dest: str, pkg: str) -> None:
+    if isinstance(toml, Path):
+        assert toml.exists()
+        toml = tomllib.loads(toml.read_text())
 
-    data = tomllib.loads(toml.read_text())
-    assert "packages" in data
-    assert dest in data["packages"]
+    assert "packages" in toml
+    assert dest in toml["packages"]
     assert (
-        len(list(filter(lambda p: p["name"] == pkg, data["packages"][dest])))
+        len(list(filter(lambda p: p["name"] == pkg, toml["packages"][dest])))
         > 0
     )
 
@@ -100,19 +102,30 @@ class TestCLI:
         os.chdir(vendor_dir)
         run_cli(["add", str(remote_repo.path().absolute())])
 
+        assert (vendor_dir / "remote_repo").exists()
+
         toml_path = vendor_dir / ".." / ".gitpkg.toml"
 
         assert toml_path.exists()
+        data = tomllib.loads(toml_path.read_text())
 
-        assert_toml_dest_exists(toml_path, "libs")
-        assert_toml_pkg_exists(toml_path, "libs", "remote_repo")
+        assert_toml_dest_exists(data, "libs")
+        assert_toml_pkg_exists(data, "libs", "remote_repo")
 
-        assert (vendor_dir / "remote_repo").exists()
+        pkg = data.get("packages", {}).get("libs", [])[0]
 
-        # must be relative path, regression  test for #8
-        remote_repo_install_link = Path(vendor_dir / "remote_repo").readlink()
-        assert not remote_repo_install_link.is_absolute()
-        assert (vendor_dir / remote_repo_install_link).exists()
+        assert pkg is not None
+        assert isinstance(pkg, dict)
+
+        # on windows for instance copy is automatically selected so this test
+        # would fail
+        if pkg.get("install-method") != "copy":
+            # must be relative path, regression  test for #8
+            remote_repo_install_link = Path(
+                vendor_dir / "remote_repo"
+            ).readlink()
+            assert not remote_repo_install_link.is_absolute()
+            assert (vendor_dir / remote_repo_install_link).exists()
 
         assert not repo.is_corrupted()
 
@@ -372,6 +385,39 @@ class TestCLI:
         )
         assert not repo.is_corrupted()
 
+    def test_remove_install_method_copy(self):
+        dep_a = self._git.create_repository("depA")
+        dep_b = self._git.create_repository("depB")
+
+        repo = self._git.create_repository("test_repo")
+        vendor_dir = repo.path() / "libs"
+        vendor_dir.mkdir(parents=True, exist_ok=True)
+        os.chdir(vendor_dir)
+        run_cli(
+            ["add", str(dep_a.path().absolute()), "--install-method", "copy"]
+        )
+        run_cli(
+            ["add", str(dep_b.path().absolute()), "--install-method", "copy"]
+        )
+
+        toml_path = repo.path() / ".gitpkg.toml"
+
+        assert_toml_dest_exists(toml_path, "libs")
+        assert_toml_pkg_exists(toml_path, "libs", "depA")
+        assert_toml_pkg_exists(toml_path, "libs", "depB")
+
+        run_cli(["remove", "depA"])
+
+        assert_toml_pkg_exists(toml_path, "libs", "depB")
+
+        data = tomllib.loads(toml_path.read_text())
+        packages = data.get("packages", {}).get("libs", [])
+
+        assert (
+            len(list(filter(lambda pkg: pkg["name"] == "depA", packages))) == 0
+        )
+        assert not repo.is_corrupted()
+
     def test_remove_with_multiple_dests(self):
         dep_a = self._git.create_repository("depA")
         dep_b = self._git.create_repository("depB")
@@ -489,6 +535,55 @@ class TestCLI:
 
         run_cli(["add", str(dep_a.path().absolute())])
         run_cli(["add", str(dep_b.path().absolute())])
+
+        os.chdir(repo.path())
+
+        toml_file = repo.path() / ".gitpkg.toml"
+
+        config = Config.from_path(toml_file)
+
+        packages = []
+
+        for pkg in config.packages.get("libs", []):
+            if pkg.name == "depA":
+                pkg.package_root = "a/b/c"
+                packages.append(pkg)
+                continue
+            if pkg.name == "depB":
+                pkg.package_root = "d/e/f"
+                packages.append(pkg)
+                continue
+
+        config.packages["libs"] = packages
+
+        toml_file.write_text(config.to_toml_string())
+
+        run_cli(["install"])
+
+        assert not (repo.path() / "libs" / "depA" / "test.txt").exists()
+        assert (repo.path() / "libs" / "depA" / "swag.txt").exists()
+        assert not (repo.path() / "libs" / "depB" / "test.txt").exists()
+        assert (repo.path() / "libs" / "depB" / "42.txt").exists()
+        assert not repo.is_corrupted()
+
+    def test_install_with_config_changes_install_method_copy(self):
+        dep_a = self._git.create_repository("depA")
+        dep_a.new_file("a/b/c/swag.txt")
+        dep_b = self._git.create_repository("depB")
+        dep_b.new_file("d/e/f/42.txt")
+
+        repo = self._git.create_repository("test_repo")
+
+        vendor_dir = repo.path() / "libs"
+        vendor_dir.mkdir(parents=True, exist_ok=True)
+        os.chdir(vendor_dir)
+
+        run_cli(
+            ["add", str(dep_a.path().absolute()), "--install-method", "copy"]
+        )
+        run_cli(
+            ["add", str(dep_b.path().absolute()), "--install-method", "copy"]
+        )
 
         os.chdir(repo.path())
 
@@ -664,6 +759,10 @@ class TestCLI:
 
         assert updated_file.exists()
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="thiis relies on install method link which does not work on win",
+    )
     def test_update_with_changes(self):
         dep_a = self._git.create_repository("depA")
         dep_a.new_file("new_file.txt")
@@ -742,3 +841,4 @@ class TestCLI:
 
 
 # TODO: test cmd: update, with commited changes locally but not on upstream
+# TODO: test cmd: add/install changing install method

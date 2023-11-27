@@ -1,4 +1,5 @@
 import re
+import shutil
 from pathlib import Path
 
 _REPOSITORY_PARSE_REGEX = [
@@ -27,9 +28,24 @@ def extract_repository_name_from_url(url: str) -> str:
     return name
 
 
-def symlink_exists(path: Path) -> bool:
+def does_actually_exist(path: Path) -> bool:
     try:
         path.lstat()
     except FileNotFoundError:
         return False
     return True
+
+
+def is_symlink(path: Path) -> bool:
+    return does_actually_exist(path) and path.is_symlink()
+
+
+def safe_dir_delete(path: Path) -> None:
+    if not does_actually_exist(path):
+        return
+
+    if is_symlink(path):
+        path.unlink()
+        return
+
+    shutil.rmtree(path)

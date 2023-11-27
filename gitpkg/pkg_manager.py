@@ -9,6 +9,7 @@ import shutil
 import sys
 from dataclasses import dataclass
 from datetime import datetime
+from filecmp import dircmp
 from pathlib import Path
 
 from git import FetchInfo, GitConfigParser, Repo
@@ -25,7 +26,12 @@ from gitpkg.errors import (
     PkgHasAlreadyBeenAddedError,
     UnknownPackageError,
 )
-from gitpkg.utils import extract_repository_name_from_url, symlink_exists
+from gitpkg.utils import (
+    does_actually_exist,
+    extract_repository_name_from_url,
+    is_symlink,
+    safe_dir_delete,
+)
 
 _GITPKGS_DIR = ".gitpkgs"
 _CONFIG_FILE = ".gitpkg.toml"
@@ -162,7 +168,9 @@ class PkgManager:
 
         return (
             (self.project_root_directory() / ".gitmodules").exists()
-            and symlink_exists(self.package_install_location(destination, pkg))
+            and does_actually_exist(
+                self.package_install_location(destination, pkg)
+            )
             and self._get_pkg_submodule_location(destination, pkg).exists()
             and self._gitmodules_internal_location(destination, pkg).exists()
         )
@@ -214,15 +222,49 @@ class PkgManager:
                     f"{ref_repo.active_branch.name}, but package "
                     f"wanted: {pkg.branch}"
                 )
-                return False
+                return True
 
         pkg_path = self.package_install_location(destination, pkg)
 
-        if (
-            pkg.package_root
-            and symlink_exists(pkg_path)
-            and pkg_path.is_symlink()
+        # was installed as link but is now copy
+        if pkg.get_install_method() == InstallMethod.COPY and is_symlink(
+            pkg_path
         ):
+            return True
+
+        # was installed as copy and is now link
+        if pkg.get_install_method() == InstallMethod.LINK and not is_symlink(
+            pkg_path
+        ):
+            return True
+
+        # check if contents of directories are different
+        if (
+            pkg.get_install_method() == InstallMethod.COPY
+            and pkg.package_root
+            and does_actually_exist(pkg_path)
+        ):
+            source_path = (
+                self._get_pkg_submodule_location(destination, pkg)
+                / pkg.package_root
+            )
+
+            if source_path.exists():
+                result = dircmp(source_path, pkg_path)
+
+                if len(result.left_only) > 0:
+                    return True
+
+                if len(result.right_only) > 0:
+                    return True
+
+                if len(result.diff_files) > 0:
+                    return True
+
+                return len(result.funny_files) > 0
+
+        # check if package root is different in a link setting
+        if pkg.package_root and is_symlink(pkg_path):
             source_path = (
                 self._get_pkg_submodule_location(destination, pkg)
                 / pkg.package_root
@@ -277,7 +319,7 @@ class PkgManager:
         install_dir.parent.mkdir(parents=True, exist_ok=True)
 
         # delete if install dir is there (missing links are exists = False)
-        install_dir.unlink(missing_ok=True)
+        safe_dir_delete(install_dir)
 
         if not repo_used_by_other_pkg and submodule_location.exists():
             shutil.rmtree(submodule_location)
@@ -313,7 +355,7 @@ class PkgManager:
         if not pkg_package_root_dir.exists():
             raise PackageRootDirNotFoundError(pkg, pkg_package_root_dir)
 
-        if symlink_exists(install_dir):
+        if does_actually_exist(install_dir):
             install_dir.unlink()
 
         match pkg.get_install_method():
@@ -344,8 +386,8 @@ class PkgManager:
             shutil.rmtree(internal_dir)
 
         install_dir = self.package_install_location(destination, pkg)
-        if symlink_exists(install_dir):
-            install_dir.unlink()
+        if does_actually_exist(install_dir):
+            safe_dir_delete(install_dir)
 
         submodule_location = self._get_pkg_submodule_location(destination, pkg)
         if not repo_used_by_other_pkg and submodule_location.exists():
@@ -402,11 +444,17 @@ class PkgManager:
             return PkgUpdateResult.NO_UPDATE_AVAILABLE
 
         if fetch_info.commit != fetch_info.old_commit:
-            return (
-                PkgUpdateResult.UPDATED
-                if not check_only
-                else PkgUpdateResult.UPDATE_AVAILABLE
-            )
+            if check_only:
+                return PkgUpdateResult.UPDATE_AVAILABLE
+
+            # since we dont have a link in install method copy we just delete
+            # and re-copy the folder
+            if pkg.get_install_method() == InstallMethod.COPY:
+                install_dir = self.package_install_location(destination, pkg)
+                safe_dir_delete(install_dir)
+                shutil.copytree(submodule_location, install_dir)
+
+            return PkgUpdateResult.UPDATED
 
         return PkgUpdateResult.NO_UPDATE_AVAILABLE
 
@@ -439,7 +487,7 @@ class PkgManager:
                 if not dest_dir.is_symlink():
                     continue
                 target_dir = (dest_dir.parent / dest_dir.readlink()).resolve()
-                if not symlink_exists(target_dir):
+                if not does_actually_exist(target_dir):
                     logging.debug(f"CLEAN: remove symlink {dest_dir}")
                     dest_dir.unlink()
 

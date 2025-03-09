@@ -738,6 +738,9 @@ class TestCLI:
     def test_update(self):
         dep_a = self._git.create_repository("depA")
         dep_b = self._git.create_repository("depB")
+        dep_c = self._git.create_repository("depC")
+
+        dep_c.new_file("src/main.cpp")
 
         repo = self._git.create_repository("test_repo")
 
@@ -747,18 +750,79 @@ class TestCLI:
 
         run_cli(["add", str(dep_a.path().absolute())])
         run_cli(["add", str(dep_b.path().absolute())])
+        run_cli(["add", str(dep_c.path().absolute()), "-r", "src"])
+
+        dep_c_file = vendor_dir / "depC" / "main.cpp"
+        assert dep_c_file.exists()
 
         os.chdir(repo.path())
 
         dep_a.new_file("updated.txt")
 
         updated_file = vendor_dir / "depA" / "updated.txt"
-
         assert not updated_file.exists()
 
         run_cli(["update"])
 
         assert updated_file.exists()
+        assert dep_c_file.exists()
+
+        dep_c.new_file("src/yolo.cpp")
+
+        run_cli(["update"])
+
+        assert dep_c_file.exists()
+
+    def test_update_with_copy_mode(self):
+        dep_a = self._git.create_repository("depA")
+        dep_b = self._git.create_repository("depB")
+        dep_c = self._git.create_repository("depC")
+
+        dep_c.new_file("src/main.cpp")
+
+        repo = self._git.create_repository("test_repo")
+
+        vendor_dir = repo.path() / "libs"
+        vendor_dir.mkdir(parents=True, exist_ok=True)
+        os.chdir(vendor_dir)
+
+        run_cli(
+            ["add", str(dep_a.path().absolute()), "--install-method", "copy"]
+        )
+        run_cli(
+            ["add", str(dep_b.path().absolute()), "--install-method", "copy"]
+        )
+        run_cli(
+            [
+                "add",
+                str(dep_c.path().absolute()),
+                "-r",
+                "src",
+                "--install-method",
+                "copy",
+            ]
+        )
+
+        dep_c_file = vendor_dir / "depC" / "main.cpp"
+        assert dep_c_file.exists()
+
+        os.chdir(repo.path())
+
+        dep_a.new_file("updated.txt")
+
+        updated_file = vendor_dir / "depA" / "updated.txt"
+        assert not updated_file.exists()
+
+        run_cli(["update"])
+
+        assert updated_file.exists()
+        assert dep_c_file.exists()
+
+        dep_c.new_file("src/yolo.cpp")
+
+        run_cli(["update"])
+
+        assert dep_c_file.exists()
 
     @pytest.mark.skipif(
         is_windows(),

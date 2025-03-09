@@ -400,8 +400,7 @@ class PkgManager:
             self.remove_package(destination, pkg)
 
         logging.debug(
-            f"uninstalled package '{pkg.name}' from dest: "
-            f"'{destination.name}'"
+            f"uninstalled package '{pkg.name}' from dest: '{destination.name}'"
         )
 
     def update_package(
@@ -452,7 +451,9 @@ class PkgManager:
             if pkg.get_install_method() == InstallMethod.COPY:
                 install_dir = self.package_install_location(destination, pkg)
                 safe_dir_delete(install_dir)
-                shutil.copytree(submodule_location, install_dir)
+                shutil.copytree(
+                    submodule_location / pkg.package_root, install_dir
+                )
 
             return PkgUpdateResult.UPDATED
 
